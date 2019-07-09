@@ -26,29 +26,37 @@
 #include<stdlib.h>
 #include<time.h>
 
-//#define PARTIAL_TEST
+//To run full experiment, comment the following line
+#define PARTIAL_TEST
 
 namespace terrier {
 
     class IndexBenchmark : public benchmark::Fixture {
 
     public:
+// this is the maximum num_inserts, num_threads and num_columns
+// for initialization and full experiment
         const int max_num_columns_ = 16;
         const uint32_t max_num_inserts_ = 10000000;
         const uint32_t max_num_threads_ = 36;
 
 #ifdef PARTIAL_TEST
+// if not full experiment, set the list of num_inserts, num_threads and num_columns
         const uint32_t num_inserts_list_[1] = {5000000};
         const uint32_t num_threads_list_[36] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,
                                                17,18,19,20,21,22,23,24,25,26,27,28,29,30,
                                                31,32,33,34,35,36};
         const int num_columns_list_[4] = {2,3,5,8};
 #else
+// if run full experiment, set num_inserts_list_ only
+// num_threads will range from 1 to max_num_threads_
+// num_columns will range from 1 to max_num_columns_
         const uint32_t num_inserts_list_[9] = {100000,    300000,    500000,    700000,
                                                1000000,   3000000,   5000000,   7000000,
                                                10000000};
 #endif
 
+// run 3 experiments and record average time
         const int max_times_ = 3;
 
         std::vector<uint32_t> key_permutation_;

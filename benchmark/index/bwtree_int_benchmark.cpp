@@ -16,8 +16,10 @@ namespace terrier {
 
     class BwTreeIntBenchmark : public benchmark::Fixture {
     public:
-        // Workload
+// number of insertion
         const uint32_t num_keys_ = 50000000;
+// maximum number of threads
+// num_threads for experiments range from 1 to max_num_threads_
         const uint32_t max_num_threads_ = 36;
 
         std::vector<int64_t> key_permutation_;
