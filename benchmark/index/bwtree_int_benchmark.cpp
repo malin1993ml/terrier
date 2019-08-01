@@ -20,7 +20,7 @@ namespace terrier {
         const uint32_t num_keys_ = 50000000;
 // maximum number of threads
 // num_threads for experiments range from 1 to max_num_threads_
-        const uint32_t max_num_threads_ = 36;
+        const uint32_t max_num_threads_ = 20;
 
         std::vector<int64_t> key_permutation_;
 
@@ -41,7 +41,7 @@ namespace terrier {
 
     // NOLINTNEXTLINE
     for (auto _ : state) {
-    for (uint32_t num_threads = 1; num_threads < max_num_threads_; num_threads++) {
+    for (uint32_t num_threads = 1; num_threads <= max_num_threads_; num_threads++) {
     uint64_t sum_time = 0;
     for (int times = 0; times < 3; times++) {
     common::WorkerPool thread_pool(num_threads, {});
