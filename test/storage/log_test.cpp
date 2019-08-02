@@ -31,7 +31,8 @@ class WriteAheadLoggingTests : public TerrierTest {
  protected:
   auto Injector(const LargeTransactionTestConfiguration &config) {
     return di::make_injector<di::TestBindingPolicy>(
-        di::storage_injector(), di::bind<LargeTransactionTestConfiguration>().to(config),
+        di::storage_injector(), di::bind<AccessObserver>().in(di::disabled),
+        di::bind<LargeTransactionTestConfiguration>().to(config),
         di::bind<std::default_random_engine>().in(di::terrier_singleton),  // need to be universal across injectors
         di::bind<uint64_t>().named(storage::BlockStore::SIZE_LIMIT).to(static_cast<uint64_t>(1000)),
         di::bind<uint64_t>().named(storage::BlockStore::REUSE_LIMIT).to(static_cast<uint64_t>(1000)),
@@ -61,7 +62,6 @@ class WriteAheadLoggingTests : public TerrierTest {
   void TearDown() override {
     // Delete log file
     unlink(LOG_FILE_NAME);
-    DedicatedThreadRegistry::GetInstance().TearDown();
     TerrierTest::TearDown();
   }
 
@@ -298,9 +298,12 @@ TEST_F(WriteAheadLoggingTests, AbortRecordTest) {
   log_manager->Start();
 
   // Create SQLTable
-  auto col = catalog::Schema::Column("attribute", type::TypeId::INTEGER, false, catalog::col_oid_t(0));
-  auto table_schema = catalog::Schema({col});
-  storage::SqlTable sql_table(injector.create<storage::BlockStore *>(), table_schema, CatalogTestUtil::test_table_oid);
+  auto col = catalog::Schema::Column(
+      "attribute", type::TypeId::INTEGER, false,
+      parser::ConstantValueExpression(type::TransientValueFactory::GetNull(type::TypeId::INTEGER)));
+  StorageTestUtil::ForceOid(&(col), catalog::col_oid_t(0));
+  auto table_schema = catalog::Schema(std::vector<catalog::Schema::Column>({col}));
+  storage::SqlTable sql_table(injector.create<storage::BlockStore *>(), table_schema);
   auto tuple_initializer = sql_table.InitializerForProjectedRow({catalog::col_oid_t(0)}).first;
 
   auto *txn_manager = injector.create<transaction::TransactionManager *>();
@@ -373,9 +376,12 @@ TEST_F(WriteAheadLoggingTests, NoAbortRecordTest) {
   log_manager->Start();
 
   // Create SQLTable
-  auto col = catalog::Schema::Column("attribute", type::TypeId::INTEGER, false, catalog::col_oid_t(0));
-  auto table_schema = catalog::Schema({col});
-  storage::SqlTable sql_table(injector.create<storage::BlockStore *>(), table_schema, CatalogTestUtil::test_table_oid);
+  auto col = catalog::Schema::Column(
+      "attribute", type::TypeId::INTEGER, false,
+      parser::ConstantValueExpression(type::TransientValueFactory::GetNull(type::TypeId::INTEGER)));
+  StorageTestUtil::ForceOid(&(col), catalog::col_oid_t(0));
+  auto table_schema = catalog::Schema(std::vector<catalog::Schema::Column>({col}));
+  storage::SqlTable sql_table(injector.create<storage::BlockStore *>(), table_schema);
   auto tuple_initializer = sql_table.InitializerForProjectedRow({catalog::col_oid_t(0)}).first;
 
   // Initialize first transaction, this txn will write a single tuple
