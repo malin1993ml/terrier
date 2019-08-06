@@ -54,20 +54,26 @@ llvm::cl::opt<bool> kIsSQL("sql", llvm::cl::desc("Is the input a SQL query?"), l
 
 tbb::task_scheduler_init scheduler;
 
-namespace tplclass {
+namespace tpl {
 
     class TplClass {
-
+    public:
         static constexpr const char *kExitKeyword = ".exit";
 
         // Terrier objects
         terrier::transaction::TransactionManager * txn_manager_pointer_;
-        exec::ExecutionContext * exec_ctx_pointer_;
+        exec::SampleOutput * sample_output_pointer_;
+        terrier::catalog::db_oid_t db_oid_;
+        terrier::catalog::Catalog * catalog_pointer_;
 
         TplClass(terrier::transaction::TransactionManager * txn_manager_pointer,
-                 exec::ExecutionContext * exec_ctx_pointer) :
+                 exec::SampleOutput * sample_output_pointer,
+                 terrier::catalog::db_oid_t db_oid,
+                 terrier::catalog::Catalog * catalog_pointer) :
                 txn_manager_pointer_(txn_manager_pointer),
-                exec_ctx_pointer_(exec_ctx_pointer) {}
+                sample_output_pointer_(sample_output_pointer),
+                db_oid_(db_oid),
+                catalog_pointer_(catalog_pointer) {}
 
 /**
  * Compile the TPL source in \a source and run it in both interpreted and JIT
@@ -77,10 +83,12 @@ namespace tplclass {
  */
         void CompileAndRun(const std::string &source, const std::string &name = "tmp-tpl") {
 
-            terrier::transaction::TransactionManager & txn_manager = *txn_manager_pointer_;
-            exec::ExecutionContext & exec_ctx = *exec_ctx_pointer_;
+            auto *txn = txn_manager_pointer_->BeginTransaction();
+            auto output_schema = sample_output_pointer_->GetSchema(kOutputName.data());
+            exec::OutputPrinter printer(output_schema);
+            auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog_pointer_->GetAccessor(txn, db_oid_));
+            exec::ExecutionContext exec_ctx{db_oid_, txn, printer, output_schema, std::move(accessor)};
 
-            auto *txn = txn_manager.BeginTransaction();
             //-----------------------------------------
             // Let's scan the source
             util::Region region("repl-ast");
@@ -236,7 +244,7 @@ namespace tplclass {
                     "Parse: {} ms, Type-check: {} ms, Code-gen: {} ms, Interp. Exec.: {} ms, "
                     "Adaptive Exec.: {} ms, Jit+Exec.: {} ms",
                     parse_ms, typecheck_ms, codegen_ms, interp_exec_ms, adaptive_exec_ms, jit_exec_ms);
-            txn_manager.Commit(txn, [](void *) {}, nullptr);
+            txn_manager_pointer_->Commit(txn, [](void *) {}, nullptr);
         }
 
     /**
@@ -279,95 +287,98 @@ namespace tplclass {
             CompileAndRun((*file)->getBuffer().str());
         }
 
+
+    /**
+     * Shutdown all TPL subsystems
+     */
+        static void ShutdownTplClass() {
+            tpl::vm::LLVMEngine::Shutdown();
+            terrier::LoggersUtil::ShutDown();
+            scheduler.terminate();
+            LOG_INFO("TPL cleanly shutdown ...");
+        }
+
+
+        static void SignalHandler(i32 sig_num) {
+            if (sig_num == SIGINT) {
+                ShutdownTplClass();
+                exit(0);
+            }
+        }
+
+        static int InitTplClass(int argc, char **argv,
+                                terrier::transaction::TransactionManager &txn_manager,
+                                terrier::storage::BlockStore &block_store,
+                                exec::SampleOutput &sample_output,
+                                terrier::catalog::db_oid_t &db_oid,
+                                terrier::catalog::Catalog &catalog) {  // NOLINT (bugprone-exception-escape)
+            // Parse options
+            llvm::cl::HideUnrelatedOptions(kTplOptionsCategory);
+            llvm::cl::ParseCommandLineOptions(argc, argv); // here should be 1, {{"-sql"}}
+
+            // Initialize a signal handler to call SignalHandler()
+            struct sigaction sa;
+            sa.sa_handler = &SignalHandler;
+            sa.sa_flags = SA_RESTART;
+
+            sigfillset(&sa.sa_mask);
+
+            if (sigaction(SIGINT, &sa, nullptr) == -1) {
+                EXECUTION_LOG_ERROR("Cannot handle SIGINT: {}", strerror(errno));
+                return errno;
+            }
+
+            // Init TPL
+            tpl::CpuInfo::Instance();
+
+            terrier::LoggersUtil::Initialize(false);
+
+            tpl::vm::LLVMEngine::Initialize();
+
+            EXECUTION_LOG_INFO("TPL Bytecode Count: {}", tpl::vm::Bytecodes::NumBytecodes());
+
+            EXECUTION_LOG_INFO("TPL initialized ...");
+
+            EXECUTION_LOG_INFO("\n{}", tpl::CpuInfo::Instance()->PrettyPrintInfo());
+
+            EXECUTION_LOG_INFO("Welcome to TPL (ver. {}.{})", TPL_VERSION_MAJOR, TPL_VERSION_MINOR);
+
+            // Either execute a TPL program from a source file, or run REPL
+            /*
+            if (!kInputFile.empty()) {
+                tplclass::RunFile(kInputFile);
+            } else if (argc == 1) {
+                tpl::RunRepl();
+            }
+
+            return 0;*/
+
+
+            auto txn = txn_manager.BeginTransaction();
+            // Get the correct output format for this test
+            sample_output.InitTestOutput();
+            auto output_schema = sample_output.GetSchema(kOutputName.data());
+
+            // Make the catalog accessor
+            db_oid = catalog.CreateDatabase(txn, "test_db", true);
+            auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
+            auto ns_oid = accessor->CreateNamespace("test_ns");
+
+            // Make the execution context
+            exec::OutputPrinter printer(output_schema);
+            exec::ExecutionContext exec_ctx{db_oid, txn, printer, output_schema, std::move(accessor)};
+
+            // Generate test tables
+            // TODO(Amadou): Read this in from a directory. That would require boost or experimental C++ though
+            sql::TableGenerator table_generator{&exec_ctx, &block_store, ns_oid};
+            table_generator.GenerateTestTables();
+            table_generator.GenerateTableFromFile("../sample_tpl/tables/lineitem.schema",
+                                                  "../sample_tpl/tables/lineitem.data");
+            table_generator.GenerateTableFromFile("../sample_tpl/tables/types1.schema", "../sample_tpl/tables/types1.data");
+            txn_manager.Commit(txn, [](void *) {}, nullptr);
+
+            return 0;
+        }
+
     };
-
-/**
- * Shutdown all TPL subsystems
- */
-    void ShutdownTPL() {
-        tpl::vm::LLVMEngine::Shutdown();
-        terrier::LoggersUtil::ShutDown();
-
-        scheduler.terminate();
-
-        LOG_INFO("TPL cleanly shutdown ...");
-    }
-
-
-    void SignalHandler(i32 sig_num) {
-        if (sig_num == SIGINT) {
-            tpl::ShutdownTPL();
-            exit(0);
-        }
-    }
-
-    void InitTPL(int argc, char **argv) {  // NOLINT (bugprone-exception-escape)
-        // Parse options
-        llvm::cl::HideUnrelatedOptions(kTplOptionsCategory);
-        llvm::cl::ParseCommandLineOptions(argc, argv);
-
-        // Initialize a signal handler to call SignalHandler()
-        struct sigaction sa;
-        sa.sa_handler = &SignalHandler;
-        sa.sa_flags = SA_RESTART;
-
-        sigfillset(&sa.sa_mask);
-
-        if (sigaction(SIGINT, &sa, nullptr) == -1) {
-            EXECUTION_LOG_ERROR("Cannot handle SIGNIT: {}", strerror(errno));
-            return errno;
-        }
-
-        // Init TPL
-        tpl::CpuInfo::Instance();
-
-        terrier::LoggersUtil::Initialize(false);
-
-        tpl::vm::LLVMEngine::Initialize();
-
-        EXECUTION_LOG_INFO("TPL Bytecode Count: {}", tpl::vm::Bytecodes::NumBytecodes());
-
-        EXECUTION_LOG_INFO("TPL initialized ...");
-
-        EXECUTION_LOG_INFO("\n{}", tpl::CpuInfo::Instance()->PrettyPrintInfo());
-
-        EXECUTION_LOG_INFO("Welcome to TPL (ver. {}.{})", TPL_VERSION_MAJOR, TPL_VERSION_MINOR);
-
-        // Either execute a TPL program from a source file, or run REPL
-        /*
-        if (!kInputFile.empty()) {
-            tplclass::RunFile(kInputFile);
-        } else if (argc == 1) {
-            tpl::RunRepl();
-        }
-
-        return 0;*/
-
-
-        auto *txn = txn_manager_.BeginTransaction();
-        // Get the correct output format for this test
-        exec::SampleOutput sample_output;
-        sample_output.InitTestOutput();
-        auto output_schema = sample_output.GetSchema(kOutputName.data());
-
-        // Make the catalog accessor
-        terrier::catalog::Catalog catalog(&txn_manager_, &block_store_);
-
-        auto db_oid = catalog.CreateDatabase(txn, "test_db", true);
-        auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
-        auto ns_oid = accessor->CreateNamespace("test_ns");
-
-        // Make the execution context
-        exec::OutputPrinter printer(output_schema);
-        exec::ExecutionContext exec_ctx{db_oid, txn, printer, output_schema, std::move(accessor)};
-
-        // Generate test tables
-        // TODO(Amadou): Read this in from a directory. That would require boost or experimental C++ though
-        sql::TableGenerator table_generator{&exec_ctx, &block_store_, ns_oid};
-        table_generator.GenerateTestTables();
-        table_generator.GenerateTableFromFile("../sample_tpl/tables/lineitem.schema",
-                                              "../sample_tpl/tables/lineitem.data");
-        table_generator.GenerateTableFromFile("../sample_tpl/tables/types1.schema", "../sample_tpl/tables/types1.data");
-        txn_manager_.Commit(txn, [](void *) {}, nullptr);
-    }
 }  // namespace tplclass

@@ -1,12 +1,13 @@
 #include <memory>
 #include <vector>
+#include <sched.h>
 
 #include "benchmark/benchmark.h"
 #include "common/scoped_timer.h"
 #include "util/multithread_test_util.h"
 
 #include <util/catalog_test_util.h>
-
+#include "parser/expression/column_value_expression.h"
 #include "portable_endian/portable_endian.h"
 #include "storage/garbage_collector_thread.h"
 #include "storage/index/compact_ints_key.h"
@@ -25,6 +26,7 @@
 #include <iostream>
 #include<stdlib.h>
 #include<time.h>
+
 #include "execution/tplclass.h"
 
 //To run full experiment, comment the following line
@@ -38,19 +40,31 @@ namespace terrier {
 // this is the maximum num_inserts, num_threads and num_columns
 // for initialization and full experiment
         static const int max_num_columns_ = 5;
-        static const uint32_t max_num_inserts_ = (2 << 27);
+        static const uint32_t max_num_inserts_ = 10000000;//(2 << 27);
         static const uint32_t total_num_inserts_ = max_num_inserts_ * 2; // 2 times of maximum inserts
-        static const uint32_t max_num_threads_ = 20;
+        static const uint32_t max_num_threads_ = 18;
         static const uint32_t num_inserts_per_table_ = max_num_inserts_ / max_num_threads_ + 1;
 
+        static const uint32_t tpch_filenum_ = 4;
+        const std::string tpch_filename_[tpch_filenum_] = {"../sample_tpl/tpch/q1.tpl",
+                                                                  "../sample_tpl/tpch/q4.tpl",
+                                                                  "../sample_tpl/tpch/q5.tpl",
+                                                                  "../sample_tpl/tpch/q6.tpl"};
+        const uint32_t core_ids_[18] = {0, 1, 2, 3, 4, 5, 6, 7, 8,
+                                           20, 21, 22, 23, 24, 25, 26, 27, 28};
 #ifdef PARTIAL_TEST
 // if not full experiment, set the list of num_inserts, num_threads and num_columns
+/*
         const uint32_t num_inserts_list_[21] = {1, 16, 256, 1024, 2048, 4096, 8192, 16384,
                                                32768, 65536, 131072, 262144, 524288,
                                                1048576, 2097152, 4194304, 8388608,
                                                16777216, 33554432, 67108864, 134217728};
         const uint32_t num_threads_list_[3] = {4, 8, 12};
-        const int num_columns_list_[3] = {1, 3, 5};
+        const int num_columns_list_[3] = {1, 3, 5};*/
+        const uint32_t num_inserts_list_[1] = {10000000};
+        const uint32_t num_threads_list_[2] = {8, 12};
+        const int num_columns_list_[2] = {1, 5};
+
 #else
         // if run full experiment, set num_inserts_list_ only
 // num_threads will range from 1 to max_num_threads_
@@ -79,8 +93,9 @@ namespace terrier {
 
         std::vector<catalog::col_oid_t> col_oids_;
 
-        exec::ExecutionContext * exec_ctx_pointer_;
-
+        tpl::exec::SampleOutput sample_output_;
+        terrier::catalog::db_oid_t db_oid_;
+        catalog::Catalog catalog_{&txn_manager_, &block_store_};
 
         void SetUp(const benchmark::State &state) final {
             key_permutation_.clear();
@@ -95,7 +110,11 @@ namespace terrier {
             col_oids_.clear();
 
             for (int i = 0; i < max_num_columns_; i++) {
-                columns.push_back({column_name, type::TypeId::BIGINT, false, catalog::col_oid_t(i)});
+                auto col = catalog::Schema::Column(
+                        "attribute", type::TypeId::BIGINT, false,
+                        parser::ConstantValueExpression(type::TransientValueFactory::GetNull(type::TypeId::BIGINT)));
+                StorageTestUtil::ForceOid(&(col), catalog::col_oid_t(i));
+                columns.push_back(col);
                 col_oids_.push_back(catalog::col_oid_t(i));
                 column_name[0]++;
             }
@@ -105,8 +124,8 @@ namespace terrier {
 
             // SqlTable
             for (int table_index = 0; table_index < (int)max_num_threads_ * 2 - 2; table_index++) {
-                storage::SqlTable *sql_table = new storage::SqlTable(&block_store_, table_schema,
-                                                                      catalog::table_oid_t(1));
+                storage::SqlTable *sql_table = new storage::SqlTable(&block_store_, table_schema);
+                                                                      //, catalog::table_oid_t(1));
                 storage::ProjectedRowInitializer tuple_initializer_{
                         sql_table->InitializerForProjectedRow(col_oids_).first};
 
@@ -127,42 +146,17 @@ namespace terrier {
             }
             std::cout << "Finished building tables for index" << std::endl;
 
-
-            auto *txn = txn_manager_.BeginTransaction();
-
-            // Get the correct output format for this test
-            exec::SampleOutput sample_output;
-            sample_output.InitTestOutput();
-            auto output_schema = sample_output.GetSchema(kOutputName.data());
-
-            // Make the catalog accessor
-            terrier::catalog::Catalog catalog(&txn_manager_, &block_store_);
-
-            auto db_oid = catalog.CreateDatabase(txn, "test_db", true);
-            auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
-            auto ns_oid = accessor->CreateNamespace("test_ns");
-
-            // Make the execution context
-            exec::OutputPrinter printer(output_schema);
-            exec::ExecutionContext exec_ctx{db_oid, txn, printer, output_schema, std::move(accessor)};
-
-            // Generate test tables
-            // TODO(Amadou): Read this in from a directory. That would require boost or experimental C++ though
-            sql::TableGenerator table_generator{&exec_ctx, &block_store, ns_oid};
-            table_generator.GenerateTestTables();
-            table_generator.GenerateTableFromFile("../sample_tpl/tables/lineitem.schema",
-                                                  "../sample_tpl/tables/lineitem.data");
-            table_generator.GenerateTableFromFile("../sample_tpl/tables/types1.schema", "../sample_tpl/tables/types1.data");
-            txn_manager_.Commit(txn, [](void *) {}, nullptr);
+            tpl::TplClass::InitTplClass(1, {{"-sql"}}, txn_manager_, block_store_,
+                                        sample_output_, db_oid_, catalog_);
         }
 
         void TearDown(const benchmark::State &state) final {
-            delete gc_thread_;
             for (int table_index = 0; table_index < (int)max_num_threads_ * 2 - 2; table_index++) {
                 delete sql_tables_[table_index];
             }
             catalog_.TearDown();
-            tplclass::ShutdownTPL();
+            tpl::TplClass::ShutdownTplClass();
+            delete gc_thread_;
         }
     };
 
@@ -180,24 +174,57 @@ namespace terrier {
 #endif
                         uint64_t sum_time = 0;
                         for (int times = 1; times <= max_times_; times++) {
-                            storage::index::IndexKeySchema key_schema_;
+                            catalog::IndexSchema default_schema_;
+                            std::vector<catalog::IndexSchema::Column> keycols;
 
-                            for (int i = 0; i < num_columns; i++)
-                                key_schema_.push_back({catalog::indexkeycol_oid_t(i), type::TypeId::BIGINT, false});
-
-
-                            common::WorkerPool thread_pool{num_threads, {}};
+                            for (int i = 0; i < num_columns; i++) {
+                                keycols.emplace_back(
+                                    "", type::TypeId::BIGINT, false,
+                                    parser::ColumnValueExpression(catalog::db_oid_t(0), catalog::table_oid_t(0), catalog::col_oid_t(i)));
+                                StorageTestUtil::ForceOid(&(keycols[i]), catalog::indexkeycol_oid_t(i));
+                            }
+                                // key_schema_.push_back({catalog::indexkeycol_oid_t(i), type::TypeId::BIGINT, false});
+                            default_schema_ = catalog::IndexSchema(keycols, false, false, false, true);
+                            common::WorkerPool bwtree_thread_pool{num_threads, {}};
+                            common::WorkerPool tpch_thread_pool{max_num_threads_ - num_threads, {}};
 
                             // BwTreeIndex
                             storage::index::Index * default_index = (storage::index::IndexBuilder()
                                     .SetConstraintType(storage::index::ConstraintType::DEFAULT)
-                                    .SetKeySchema(key_schema_)
+                                    .SetKeySchema(default_schema_)
                                     .SetOid(catalog::index_oid_t(2)))
                                     .Build();
 
                             gc_thread_->GetGarbageCollector().RegisterIndexForGC(default_index);
+                            bool unfinished = true;
 
-                            auto workload = [&](uint32_t worker_id) {
+                            auto run_my_tpch = [&](uint32_t worker_id, uint32_t core_id) {
+                                // Pin to core
+                                cpu_set_t cpu_set;
+                                CPU_ZERO(&cpu_set);
+                                CPU_SET(core_id, &cpu_set);
+                                int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set), &cpu_set);
+                                if(ret != 0) {
+                                    fprintf(stderr, "CPU setting failed...\n");
+                                    exit(1);
+                                }
+
+                                tplclass::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid, &catalog_);
+                                while (unfinished)
+                                    my_tpch.RunFile(tpch_filename_[worker_id % tpch_filenum_]);
+                            };
+
+                            auto workload = [&](uint32_t worker_id, uint32_t core_id) {
+                                // Pin to core
+                                cpu_set_t cpu_set;
+                                CPU_ZERO(&cpu_set);
+                                CPU_SET(core_id, &cpu_set);
+                                int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set), &cpu_set);
+                                if(ret != 0) {
+                                    fprintf(stderr, "CPU setting failed...\n");
+                                    exit(1);
+                                }
+
                                 auto *const key_buffer =
                                         common::AllocationUtil::AllocateAligned(default_index->GetProjectedRowInitializer().ProjectedRowSize());
                                 auto *const insert_key = default_index->GetProjectedRowInitializer().InitializeRow(key_buffer);
@@ -238,16 +265,22 @@ namespace terrier {
                                 delete[] key_buffer;
                             };
 
+                            for (uint32_t i = num_threads; i < max_num_threads_; i++) {
+                                tpch_thread_pool.SubmitTask([i, &workload] { workload(i, core_ids_[i]); });
+                            }
+
                             uint64_t elapsed_us;
                             {
                                 common::ScopedTimer<std::chrono::microseconds> timer(&elapsed_us);
 
                                 // run the workload
                                 for (uint32_t i = 0; i < num_threads; i++) {
-                                    thread_pool.SubmitTask([i, &workload] { workload(i); });
+                                    bwtree_thread_pool.SubmitTask([i, &workload] { workload(i, core_ids_[i]); });
                                 }
-                                thread_pool.WaitUntilAllFinished();
+                                bwtree_thread_pool.WaitUntilAllFinished();
                             }
+                            unfinished = false;
+                            tpch_thread_pool.WaitUntilAllFinished();
 
                             gc_thread_->GetGarbageCollector().UnregisterIndexForGC(default_index);
 
