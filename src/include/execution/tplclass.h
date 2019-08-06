@@ -239,47 +239,47 @@ namespace tplclass {
             txn_manager.Commit(txn, [](void *) {}, nullptr);
         }
 
+    /**
+     * Run the TPL REPL
+     */
+        void RunRepl() {
+            while (true) {
+                std::string input;
+
+                std::string line;
+                do {
+                    printf(">>> ");
+                    std::getline(std::cin, line);
+
+                    if (line == kExitKeyword) {
+                        return;
+                    }
+
+                    input.append(line).append("\n");
+                } while (!line.empty());
+
+                CompileAndRun(input);
+            }
+        }
+
+    /**
+     * Compile and run the TPL program in the given filename
+     * @param filename The name of the file on disk to compile
+     */
+        void RunFile(const std::string &filename) {
+            auto file = llvm::MemoryBuffer::getFile(filename);
+            if (std::error_code error = file.getError()) {
+                EXECUTION_LOG_ERROR("There was an error reading file '{}': {}", filename, error.message());
+                return;
+            }
+
+            EXECUTION_LOG_INFO("Compiling and running file: {}", filename);
+
+            // Copy the source into a temporary, compile, and run
+            CompileAndRun((*file)->getBuffer().str());
+        }
+
     };
-
-/**
- * Run the TPL REPL
- */
-    static void RunRepl() {
-        while (true) {
-            std::string input;
-
-            std::string line;
-            do {
-                printf(">>> ");
-                std::getline(std::cin, line);
-
-                if (line == kExitKeyword) {
-                    return;
-                }
-
-                input.append(line).append("\n");
-            } while (!line.empty());
-
-            CompileAndRun(input);
-        }
-    }
-
-/**
- * Compile and run the TPL program in the given filename
- * @param filename The name of the file on disk to compile
- */
-    static void RunFile(const std::string &filename) {
-        auto file = llvm::MemoryBuffer::getFile(filename);
-        if (std::error_code error = file.getError()) {
-            EXECUTION_LOG_ERROR("There was an error reading file '{}': {}", filename, error.message());
-            return;
-        }
-
-        EXECUTION_LOG_INFO("Compiling and running file: {}", filename);
-
-        // Copy the source into a temporary, compile, and run
-        CompileAndRun((*file)->getBuffer().str());
-    }
 
 /**
  * Shutdown all TPL subsystems
@@ -301,7 +301,7 @@ namespace tplclass {
         }
     }
 
-    int main(int argc, char **argv) {  // NOLINT (bugprone-exception-escape)
+    void InitTPL(int argc, char **argv) {  // NOLINT (bugprone-exception-escape)
         // Parse options
         llvm::cl::HideUnrelatedOptions(kTplOptionsCategory);
         llvm::cl::ParseCommandLineOptions(argc, argv);
@@ -334,12 +334,40 @@ namespace tplclass {
         EXECUTION_LOG_INFO("Welcome to TPL (ver. {}.{})", TPL_VERSION_MAJOR, TPL_VERSION_MINOR);
 
         // Either execute a TPL program from a source file, or run REPL
+        /*
         if (!kInputFile.empty()) {
             tplclass::RunFile(kInputFile);
         } else if (argc == 1) {
             tpl::RunRepl();
         }
 
-        return 0;
+        return 0;*/
+
+
+        auto *txn = txn_manager_.BeginTransaction();
+        // Get the correct output format for this test
+        exec::SampleOutput sample_output;
+        sample_output.InitTestOutput();
+        auto output_schema = sample_output.GetSchema(kOutputName.data());
+
+        // Make the catalog accessor
+        terrier::catalog::Catalog catalog(&txn_manager_, &block_store_);
+
+        auto db_oid = catalog.CreateDatabase(txn, "test_db", true);
+        auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
+        auto ns_oid = accessor->CreateNamespace("test_ns");
+
+        // Make the execution context
+        exec::OutputPrinter printer(output_schema);
+        exec::ExecutionContext exec_ctx{db_oid, txn, printer, output_schema, std::move(accessor)};
+
+        // Generate test tables
+        // TODO(Amadou): Read this in from a directory. That would require boost or experimental C++ though
+        sql::TableGenerator table_generator{&exec_ctx, &block_store_, ns_oid};
+        table_generator.GenerateTestTables();
+        table_generator.GenerateTableFromFile("../sample_tpl/tables/lineitem.schema",
+                                              "../sample_tpl/tables/lineitem.data");
+        table_generator.GenerateTableFromFile("../sample_tpl/tables/types1.schema", "../sample_tpl/tables/types1.data");
+        txn_manager_.Commit(txn, [](void *) {}, nullptr);
     }
-}  // namespace tpl
+}  // namespace tplclass
