@@ -25,6 +25,7 @@
 #include <iostream>
 #include<stdlib.h>
 #include<time.h>
+#include "execution/tplclass.h"
 
 //To run full experiment, comment the following line
 #define PARTIAL_TEST
@@ -78,6 +79,8 @@ namespace terrier {
 
         std::vector<catalog::col_oid_t> col_oids_;
 
+        exec::ExecutionContext * exec_ctx_pointer_;
+
 
         void SetUp(const benchmark::State &state) final {
             key_permutation_.clear();
@@ -122,7 +125,35 @@ namespace terrier {
                 txn_manager_.Commit(insert_txn, transaction::TransactionUtil::EmptyCallback, nullptr);
                 sql_tables_[table_index] = sql_table;
             }
-            std::cout << "Finished building tables" << std::endl;
+            std::cout << "Finished building tables for index" << std::endl;
+
+
+            auto *txn = txn_manager_.BeginTransaction();
+
+            // Get the correct output format for this test
+            exec::SampleOutput sample_output;
+            sample_output.InitTestOutput();
+            auto output_schema = sample_output.GetSchema(kOutputName.data());
+
+            // Make the catalog accessor
+            terrier::catalog::Catalog catalog(&txn_manager_, &block_store_);
+
+            auto db_oid = catalog.CreateDatabase(txn, "test_db", true);
+            auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
+            auto ns_oid = accessor->CreateNamespace("test_ns");
+
+            // Make the execution context
+            exec::OutputPrinter printer(output_schema);
+            exec::ExecutionContext exec_ctx{db_oid, txn, printer, output_schema, std::move(accessor)};
+
+            // Generate test tables
+            // TODO(Amadou): Read this in from a directory. That would require boost or experimental C++ though
+            sql::TableGenerator table_generator{&exec_ctx, &block_store, ns_oid};
+            table_generator.GenerateTestTables();
+            table_generator.GenerateTableFromFile("../sample_tpl/tables/lineitem.schema",
+                                                  "../sample_tpl/tables/lineitem.data");
+            table_generator.GenerateTableFromFile("../sample_tpl/tables/types1.schema", "../sample_tpl/tables/types1.data");
+            txn_manager_.Commit(txn, [](void *) {}, nullptr);
         }
 
         void TearDown(const benchmark::State &state) final {
@@ -130,6 +161,8 @@ namespace terrier {
             for (int table_index = 0; table_index < (int)max_num_threads_ * 2 - 2; table_index++) {
                 delete sql_tables_[table_index];
             }
+            catalog_.TearDown();
+            tplclass::ShutdownTPL();
         }
     };
 
