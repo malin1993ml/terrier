@@ -312,6 +312,7 @@ namespace tpl {
                                 exec::SampleOutput &sample_output,
                                 terrier::catalog::db_oid_t &db_oid,
                                 terrier::catalog::Catalog &catalog) {  // NOLINT (bugprone-exception-escape)
+            
             // Parse options
             llvm::cl::HideUnrelatedOptions(kTplOptionsCategory);
             llvm::cl::ParseCommandLineOptions(argc, argv); // here should be 1, {{"-sql"}}
@@ -331,7 +332,7 @@ namespace tpl {
             // Init TPL
             tpl::CpuInfo::Instance();
 
-            terrier::LoggersUtil::Initialize(false);
+            //terrier::LoggersUtil::Initialize(false);
 
             tpl::vm::LLVMEngine::Initialize();
 

@@ -50,8 +50,13 @@ namespace terrier {
                                                                   "../sample_tpl/tpch/q4.tpl",
                                                                   "../sample_tpl/tpch/q5.tpl",
                                                                   "../sample_tpl/tpch/q6.tpl"};
-        const uint32_t core_ids_[18] = {0, 1, 2, 3, 4, 5, 6, 7, 8,
+        static constexpr uint32_t core_ids_[18] = {0, 1, 2, 3, 4, 5, 6, 7, 8,
                                            20, 21, 22, 23, 24, 25, 26, 27, 28};
+        const char * cmd0 = "tpl";
+        const char * cmd1 = "-sql";
+        const char * cmd2 = "../sample_tpl/tpch/q1.tpl";
+        const char * cmd_for_tpch[3] = {cmd0, cmd1, cmd2};
+        
 #ifdef PARTIAL_TEST
 // if not full experiment, set the list of num_inserts, num_threads and num_columns
 /*
@@ -94,8 +99,8 @@ namespace terrier {
         std::vector<catalog::col_oid_t> col_oids_;
 
         tpl::exec::SampleOutput sample_output_;
-        terrier::catalog::db_oid_t db_oid_;
-        catalog::Catalog catalog_{&txn_manager_, &block_store_};
+        catalog::db_oid_t db_oid_;
+        catalog::Catalog *catalog_pointer_;
 
         void SetUp(const benchmark::State &state) final {
             key_permutation_.clear();
@@ -145,16 +150,19 @@ namespace terrier {
                 sql_tables_[table_index] = sql_table;
             }
             std::cout << "Finished building tables for index" << std::endl;
+            
+            catalog_pointer_ = new catalog::Catalog(&txn_manager_, &block_store_);
 
-            tpl::TplClass::InitTplClass(1, {{"-sql"}}, txn_manager_, block_store_,
-                                        sample_output_, db_oid_, catalog_);
+            tpl::TplClass::InitTplClass(3, (char **)cmd_for_tpch, txn_manager_, block_store_,
+                                        sample_output_, db_oid_, *catalog_pointer_);
         }
 
         void TearDown(const benchmark::State &state) final {
             for (int table_index = 0; table_index < (int)max_num_threads_ * 2 - 2; table_index++) {
                 delete sql_tables_[table_index];
             }
-            catalog_.TearDown();
+            catalog_pointer_->TearDown();
+            delete catalog_pointer_;
             tpl::TplClass::ShutdownTplClass();
             delete gc_thread_;
         }
@@ -197,6 +205,7 @@ namespace terrier {
 
                             gc_thread_->GetGarbageCollector().RegisterIndexForGC(default_index);
                             bool unfinished = true;
+                            bool *unfinished_pointer = &unfinished;
 
                             auto run_my_tpch = [&](uint32_t worker_id, uint32_t core_id) {
                                 // Pin to core
@@ -208,9 +217,11 @@ namespace terrier {
                                     fprintf(stderr, "CPU setting failed...\n");
                                     exit(1);
                                 }
+                                while (*unfinished_pointer);
+                                return;
 
-                                tplclass::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid, &catalog_);
-                                while (unfinished)
+                                tpl::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_, catalog_pointer_);
+                                while (*unfinished_pointer)
                                     my_tpch.RunFile(tpch_filename_[worker_id % tpch_filenum_]);
                             };
 
@@ -266,7 +277,7 @@ namespace terrier {
                             };
 
                             for (uint32_t i = num_threads; i < max_num_threads_; i++) {
-                                tpch_thread_pool.SubmitTask([i, &workload] { workload(i, core_ids_[i]); });
+                                tpch_thread_pool.SubmitTask([i, &run_my_tpch] { run_my_tpch(i, core_ids_[i]); });
                             }
 
                             uint64_t elapsed_us;
@@ -279,7 +290,8 @@ namespace terrier {
                                 }
                                 bwtree_thread_pool.WaitUntilAllFinished();
                             }
-                            unfinished = false;
+                            *unfinished_pointer = false;
+                            std::cout << "Finished" << std::endl;
                             tpch_thread_pool.WaitUntilAllFinished();
 
                             gc_thread_->GetGarbageCollector().UnregisterIndexForGC(default_index);
