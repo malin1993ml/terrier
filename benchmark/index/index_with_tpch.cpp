@@ -26,6 +26,7 @@
 #include <iostream>
 #include<stdlib.h>
 #include<time.h>
+#include <unistd.h>
 
 #include "execution/tplclass.h"
 
@@ -67,8 +68,8 @@ namespace terrier {
         const uint32_t num_threads_list_[3] = {4, 8, 12};
         const int num_columns_list_[3] = {1, 3, 5};*/
         const uint32_t num_inserts_list_[1] = {10000000};
-        const uint32_t num_threads_list_[2] = {8, 12};
-        const int num_columns_list_[2] = {1, 5};
+        const uint32_t num_threads_list_[1] = {12};
+        const int num_columns_list_[1] = {5};
 
 #else
         // if run full experiment, set num_inserts_list_ only
@@ -205,7 +206,6 @@ namespace terrier {
 
                             gc_thread_->GetGarbageCollector().RegisterIndexForGC(default_index);
                             bool unfinished = true;
-                            bool *unfinished_pointer = &unfinished;
 
                             auto run_my_tpch = [&](uint32_t worker_id, uint32_t core_id) {
                                 // Pin to core
@@ -217,12 +217,15 @@ namespace terrier {
                                     fprintf(stderr, "CPU setting failed...\n");
                                     exit(1);
                                 }
-                                while (*unfinished_pointer);
-                                return;
+                                //while (unfinished) sleep(1);
+                                //std::cout << "Out " << worker_id << std::endl;
+                                //return;
 
                                 tpl::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_, catalog_pointer_);
-                                while (*unfinished_pointer)
+                                while (unfinished) {
                                     my_tpch.RunFile(tpch_filename_[worker_id % tpch_filenum_]);
+                                    std::cout << "Turn End " << worker_id << std::endl;
+                                }
                             };
 
                             auto workload = [&](uint32_t worker_id, uint32_t core_id) {
@@ -235,6 +238,8 @@ namespace terrier {
                                     fprintf(stderr, "CPU setting failed...\n");
                                     exit(1);
                                 }
+                                sleep(10);
+                                return;
 
                                 auto *const key_buffer =
                                         common::AllocationUtil::AllocateAligned(default_index->GetProjectedRowInitializer().ProjectedRowSize());
@@ -290,7 +295,7 @@ namespace terrier {
                                 }
                                 bwtree_thread_pool.WaitUntilAllFinished();
                             }
-                            *unfinished_pointer = false;
+                            unfinished = false;
                             std::cout << "Finished" << std::endl;
                             tpch_thread_pool.WaitUntilAllFinished();
 
