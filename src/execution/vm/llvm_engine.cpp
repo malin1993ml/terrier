@@ -34,9 +34,9 @@
 #include "execution/vm/bytecode_traits.h"
 #include "loggers/execution_logger.h"
 
-extern void *__dso_handle __attribute__ ((__visibility__ ("hidden")));
+extern void *__dso_handle __attribute__((__visibility__("hidden")));
 
-namespace tpl::vm {
+namespace terrier::vm {
 
 namespace {
 
@@ -1122,4 +1122,4 @@ std::unique_ptr<LLVMEngine::CompiledModule> LLVMEngine::Compile(const BytecodeMo
   return compiled_module;
 }
 
-}  // namespace tpl::vm
+}  // namespace terrier::vm

@@ -1,21 +1,20 @@
 #include "execution/sql/index_iterator.h"
 #include "execution/sql/value.h"
 
-namespace tpl::sql {
+namespace terrier::sql {
 
 IndexIterator::IndexIterator(uint32_t table_oid, uint32_t index_oid, exec::ExecutionContext *exec_ctx)
-    : exec_ctx_(exec_ctx)
-    , index_(exec_ctx_->GetAccessor()->GetIndex(terrier::catalog::index_oid_t(index_oid)))
-    , table_(exec_ctx_->GetAccessor()->GetTable(terrier::catalog::table_oid_t(table_oid)))
-    , schema_(exec_ctx_->GetAccessor()->GetSchema(terrier::catalog::table_oid_t(table_oid))){
-
-}
+    : exec_ctx_(exec_ctx),
+      index_(exec_ctx_->GetAccessor()->GetIndex(terrier::catalog::index_oid_t(index_oid))),
+      table_(exec_ctx_->GetAccessor()->GetTable(terrier::catalog::table_oid_t(table_oid))),
+      schema_(exec_ctx_->GetAccessor()->GetSchema(terrier::catalog::table_oid_t(table_oid))) {}
 
 void IndexIterator::Init() {
   // Initialize projected rows for the index and the table
   if (col_oids_.empty()) {
+    // TODO(Amadou): Better to throw an assertion error now that the schema order is not guaranteed?
     // If no col_oid is passed in read all columns.
-    for (const auto & col : schema_.GetColumns()) {
+    for (const auto &col : schema_.GetColumns()) {
       col_oids_.emplace_back(col.Oid());
     }
   }
@@ -36,4 +35,4 @@ IndexIterator::~IndexIterator() {
   delete[] index_buffer_;
   delete[] table_buffer_;
 }
-}  // namespace tpl::sql
+}  // namespace terrier::sql

@@ -54,7 +54,7 @@ llvm::cl::opt<bool> kIsSQL("sql", llvm::cl::desc("Is the input a SQL query?"), l
 
 tbb::task_scheduler_init scheduler;
 
-namespace tpl {
+namespace terrier {
 
 static constexpr const char *kExitKeyword = ".exit";
 
@@ -82,7 +82,7 @@ static void CompileAndRun(const std::string &source, const std::string &name = "
 
   auto db_oid = catalog.CreateDatabase(txn, "test_db", true);
   auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
-  auto ns_oid = accessor->CreateNamespace("test_ns");
+  auto ns_oid = accessor->GetDefaultNamespace();
 
   // Make the execution context
   exec::OutputPrinter printer(output_schema);
@@ -92,8 +92,9 @@ static void CompileAndRun(const std::string &source, const std::string &name = "
   // TODO(Amadou): Read this in from a directory. That would require boost or experimental C++ though
   sql::TableGenerator table_generator{&exec_ctx, &block_store, ns_oid};
   table_generator.GenerateTestTables();
-  table_generator.GenerateTableFromFile("../sample_tpl/tables/lineitem.schema", "../sample_tpl/tables/lineitem.data");
+  table_generator.GenerateTPCHTables("../sample_tpl/tables/");
   table_generator.GenerateTableFromFile("../sample_tpl/tables/types1.schema", "../sample_tpl/tables/types1.data");
+  // table_generator.GenerateTableFromFile("../sample_tpl/tables/part.schema", "../sample_tpl/tables/part.data");
 
   // Let's scan the source
   util::Region region("repl-ast");
@@ -102,7 +103,8 @@ static void CompileAndRun(const std::string &source, const std::string &name = "
   ast::Context context(&region, &error_reporter);
 
   parsing::Scanner scanner(source.data(), source.length());
-  parsing::Parser parser(&scanner, &context);
+  parsing::Rewriter rewriter(&context, exec_ctx.GetAccessor());
+  parsing::Parser parser(&scanner, &context, &rewriter);
 
   double parse_ms = 0.0, typecheck_ms = 0.0, codegen_ms = 0.0, interp_exec_ms = 0.0, adaptive_exec_ms = 0.0,
          jit_exec_ms = 0.0;
@@ -136,7 +138,7 @@ static void CompileAndRun(const std::string &source, const std::string &name = "
   if (error_reporter.HasErrors()) {
     EXECUTION_LOG_ERROR("Type-checking error!");
     error_reporter.PrintErrors();
-    return;
+    throw std::runtime_error("Type Checking Exception!");
   }
 
   // Dump AST
@@ -299,13 +301,13 @@ static void RunFile(const std::string &filename) {
  * Initialize all TPL subsystems
  */
 void InitTPL() {
-  tpl::CpuInfo::Instance();
+  terrier::CpuInfo::Instance();
 
   terrier::LoggersUtil::Initialize(false);
 
-  tpl::vm::LLVMEngine::Initialize();
+  terrier::vm::LLVMEngine::Initialize();
 
-  EXECUTION_LOG_INFO("TPL Bytecode Count: {}", tpl::vm::Bytecodes::NumBytecodes());
+  EXECUTION_LOG_INFO("TPL Bytecode Count: {}", terrier::vm::Bytecodes::NumBytecodes());
 
   EXECUTION_LOG_INFO("TPL initialized ...");
 }
@@ -314,7 +316,7 @@ void InitTPL() {
  * Shutdown all TPL subsystems
  */
 void ShutdownTPL() {
-  tpl::vm::LLVMEngine::Shutdown();
+  terrier::vm::LLVMEngine::Shutdown();
   terrier::LoggersUtil::ShutDown();
 
   scheduler.terminate();
@@ -322,11 +324,11 @@ void ShutdownTPL() {
   LOG_INFO("TPL cleanly shutdown ...");
 }
 
-}  // namespace tpl
+}  // namespace terrier
 
 void SignalHandler(i32 sig_num) {
   if (sig_num == SIGINT) {
-    tpl::ShutdownTPL();
+    terrier::ShutdownTPL();
     exit(0);
   }
 }
@@ -349,21 +351,21 @@ int main(int argc, char **argv) {  // NOLINT (bugprone-exception-escape)
   }
 
   // Init TPL
-  tpl::InitTPL();
+  terrier::InitTPL();
 
-  EXECUTION_LOG_INFO("\n{}", tpl::CpuInfo::Instance()->PrettyPrintInfo());
+  EXECUTION_LOG_INFO("\n{}", terrier::CpuInfo::Instance()->PrettyPrintInfo());
 
   EXECUTION_LOG_INFO("Welcome to TPL (ver. {}.{})", TPL_VERSION_MAJOR, TPL_VERSION_MINOR);
 
   // Either execute a TPL program from a source file, or run REPL
   if (!kInputFile.empty()) {
-    tpl::RunFile(kInputFile);
+    terrier::RunFile(kInputFile);
   } else if (argc == 1) {
-    tpl::RunRepl();
+    terrier::RunRepl();
   }
 
   // Cleanup
-  tpl::ShutdownTPL();
+  terrier::ShutdownTPL();
 
   return 0;
 }

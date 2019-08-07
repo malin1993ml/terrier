@@ -1,4 +1,5 @@
 #include <memory>
+#include <vector>
 
 #include "execution/sql_test.h"  // NOLINT
 
@@ -6,7 +7,7 @@
 #include "execution/sql/table_vector_iterator.h"
 #include "execution/util/timer.h"
 
-namespace tpl::sql::test {
+namespace terrier::sql::test {
 
 class TableVectorIteratorTest : public SqlBasedTest {
   void SetUp() override {
@@ -14,6 +15,11 @@ class TableVectorIteratorTest : public SqlBasedTest {
     SqlBasedTest::SetUp();
     exec_ctx_ = MakeExecCtx();
     GenerateTestTables(exec_ctx_.get());
+  }
+
+ public:
+  terrier::parser::ConstantValueExpression DummyExpr() {
+    return terrier::parser::ConstantValueExpression(terrier::type::TransientValueFactory::GetInteger(0));
   }
 
  protected:
@@ -41,7 +47,9 @@ TEST_F(TableVectorIteratorTest, SimpleIteratorTest) {
   //
 
   auto table_oid = exec_ctx_->GetAccessor()->GetTableOid(NSOid(), "test_1");
+  const auto & schema = exec_ctx_->GetAccessor()->GetSchema(table_oid);
   TableVectorIterator iter(!table_oid, exec_ctx_.get());
+  iter.AddCol(!schema.GetColumn("colA").Oid());
   iter.Init();
   ProjectedColumnsIterator *pci = iter.projected_columns_iterator();
 
@@ -77,7 +85,7 @@ TEST_F(TableVectorIteratorTest, NullableTypesIteratorTest) {
   i16 prev_val{0};
   while (iter.Advance()) {
     for (; pci->HasNext(); pci->Advance()) {
-      // The serial column is the smallest one (SmallInt type), so it ends up at the last index in the storage layer.
+      // The serial column is the smallest one (SmallInt type), so it should be the last index in the storage layer.
       auto* val = pci->Get<i16, false>(3, nullptr);
       if (num_tuples > 0) {
         ASSERT_EQ(*val, prev_val + 1);
@@ -120,5 +128,4 @@ TEST_F(TableVectorIteratorTest, IteratorAddColTest) {
   EXPECT_EQ(sql::test2_size, num_tuples);
 }
 
-
-}  // namespace tpl::sql::test
+}  // namespace terrier::sql::test

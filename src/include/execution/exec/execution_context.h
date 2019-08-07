@@ -9,10 +9,8 @@
 #include "transaction/transaction_context.h"
 #include "transaction/transaction_manager.h"
 
-
-namespace tpl::exec {
+namespace terrier::exec {
 using terrier::transaction::TransactionContext;
-
 
 /**
  * Execution Context: Stores information handed in by upper layers.
@@ -115,6 +113,9 @@ class ExecutionContext {
    */
   terrier::catalog::CatalogAccessor *GetAccessor() { return accessor_.get(); }
 
+  /**
+   * @return the db oid
+   */
   terrier::catalog::db_oid_t DBOid() { return db_oid_; }
 
  private:
@@ -125,4 +126,4 @@ class ExecutionContext {
   StringAllocator string_allocator_;
   std::unique_ptr<terrier::catalog::CatalogAccessor> accessor_;
 };
-}  // namespace tpl::exec
+}  // namespace terrier::exec

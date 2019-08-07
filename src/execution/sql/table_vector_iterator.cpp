@@ -8,7 +8,7 @@
 #include "tbb/parallel_for.h"
 #include "tbb/task_scheduler_init.h"
 
-namespace tpl::sql {
+namespace terrier::sql {
 
 using terrier::catalog::col_oid_t;
 using terrier::catalog::Schema;
@@ -28,9 +28,10 @@ bool TableVectorIterator::Init() {
 
   // Initialize the projected column
   if (col_oids_.empty()) {
+    // TODO(Amadou): Better to throw an assertion error now that the schema order is not guaranteed?
     // If no col_oid is passed in read all columns.
-    auto & schema = exec_ctx_->GetAccessor()->GetSchema(table_oid_);
-    for (const auto & col : schema.GetColumns()) {
+    auto &schema = exec_ctx_->GetAccessor()->GetSchema(table_oid_);
+    for (const auto &col : schema.GetColumns()) {
       col_oids_.emplace_back(col.Oid());
     }
   }
@@ -63,4 +64,4 @@ bool TableVectorIterator::ParallelScan(u32 db_oid, u32 table_oid, void *const qu
   return false;
 }
 
-}  // namespace tpl::sql
+}  // namespace terrier::sql

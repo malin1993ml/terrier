@@ -15,7 +15,7 @@
 #include "execution/vm/control_flow_builders.h"
 #include "loggers/execution_logger.h"
 
-namespace tpl::vm {
+namespace terrier::vm {
 
 // ---------------------------------------------------------
 // Expression Result Scope
@@ -279,7 +279,7 @@ void BytecodeGenerator::VisitArrayIndexExpr(ast::IndexExpr *node) {
   LocalVar elem_ptr = current_function()->NewLocal(node->type()->PointerTo());
 
   if (node->index()->IsIntegerLiteral()) {
-    const i32 index = static_cast<i32>(node->index()->As<ast::LitExpr>()->int64_val());
+    const auto index = static_cast<i32>(node->index()->As<ast::LitExpr>()->int64_val());
     TPL_ASSERT(index >= 0, "Array indexes must be non-negative");
     emitter()->EmitLea(elem_ptr, arr, (elem_size * index));
   } else {
@@ -463,7 +463,7 @@ void BytecodeGenerator::VisitSqlConversionCall(ast::CallExpr *call, ast::Builtin
       auto dest = execution_result()->GetOrCreateDestination(ast::BuiltinType::Get(ctx, ast::BuiltinType::StringVal));
       // Copy data into the execution context's buffer.
       auto input = call->arguments()[0]->As<ast::LitExpr>()->raw_string_val();
-      auto input_length = input.length() + 1;
+      auto input_length = input.length();
       auto *data = exec_ctx_->GetStringAllocator()->Allocate(input_length);
       std::memcpy(data, input.data(), input_length);
       // Assign the pointer to a local variable
@@ -495,21 +495,6 @@ void BytecodeGenerator::VisitBuiltinTableIterCall(ast::CallExpr *call, ast::Buil
   LocalVar iter = VisitExpressionForRValue(call->arguments()[0]);
 
   switch (builtin) {
-    case ast::Builtin::TableIterConstructBind: {
-      // The second argument is the ns name
-      ast::Identifier ns_name = call->arguments()[1]->As<ast::LitExpr>()->raw_string_val();
-      auto ns_oid = exec_ctx_->GetAccessor()->GetNamespaceOid(ns_name.data());
-      TPL_ASSERT(ns_oid != terrier::catalog::INVALID_NAMESPACE_OID, "Namespace does not exists");
-      // The third argument is the table name
-      ast::Identifier table_name = call->arguments()[2]->As<ast::LitExpr>()->raw_string_val();
-      auto table_oid = exec_ctx_->GetAccessor()->GetTableOid(ns_oid, table_name.data());
-      TPL_ASSERT(table_oid != terrier::catalog::INVALID_TABLE_OID, "Table does not exists");
-      // The fourth argument should be the execution context
-      LocalVar exec_ctx = VisitExpressionForRValue(call->arguments()[3]);
-      // Emit the initialization codes
-      emitter()->EmitTableIterConstruct(Bytecode::TableVectorIteratorConstruct, iter, !table_oid, exec_ctx);
-      break;
-    }
     case ast::Builtin::TableIterConstruct: {
       // The second argument is the table as a literal string or as an oid integer literal
       auto table_oid = static_cast<u32>(call->arguments()[1]->As<ast::LitExpr>()->int64_val());
@@ -524,21 +509,8 @@ void BytecodeGenerator::VisitBuiltinTableIterCall(ast::CallExpr *call, ast::Buil
       break;
     }
     case ast::Builtin::TableIterAddCol: {
-      auto col_oid = static_cast<u32>(call->arguments()[1]->As<ast::LitExpr>()->int64_val());;
+      auto col_oid = static_cast<u32>(call->arguments()[1]->As<ast::LitExpr>()->int64_val());
       emitter()->EmitAddCol(Bytecode::TableVectorIteratorAddCol, iter, col_oid);
-      break;
-    }
-    case ast::Builtin::TableIterAddColBind: {
-      std::string ns_name(call->arguments()[1]->As<ast::LitExpr>()->raw_string_val().data());
-      auto ns_oid = exec_ctx_->GetAccessor()->GetNamespaceOid(ns_name);
-      TPL_ASSERT(ns_oid != terrier::catalog::INVALID_NAMESPACE_OID, "Namespace does not exists");
-      std::string table_name(call->arguments()[2]->As<ast::LitExpr>()->raw_string_val().data());
-      auto table_oid = exec_ctx_->GetAccessor()->GetTableOid(ns_oid, table_name);
-      TPL_ASSERT(table_oid != terrier::catalog::INVALID_TABLE_OID, "Table does not exists");
-      std::string col_name(call->arguments()[3]->As<ast::LitExpr>()->raw_string_val().data());
-      auto col_oid = exec_ctx_->GetAccessor()->GetSchema(table_oid).GetColumn(col_name).Oid();
-      TPL_ASSERT(col_oid != terrier::catalog::INVALID_COLUMN_OID, "Column does not exists");
-      emitter()->EmitAddCol(Bytecode::TableVectorIteratorAddCol, iter, !col_oid);
       break;
     }
     case ast::Builtin::TableIterAdvance: {
@@ -796,8 +768,8 @@ void BytecodeGenerator::VisitBuiltinFilterCall(ast::CallExpr *call, ast::Builtin
   // Projected Column Iterator
   LocalVar pci = VisitExpressionForRValue(call->arguments()[0]);
   // Column index
-  u16 col_idx = static_cast<u16>(call->arguments()[1]->As<ast::LitExpr>()->int64_val());
-  i8 col_type = static_cast<i8>(call->arguments()[2]->As<ast::LitExpr>()->int64_val());
+  auto col_idx = static_cast<u16>(call->arguments()[1]->As<ast::LitExpr>()->int64_val());
+  auto col_type = static_cast<i8>(call->arguments()[2]->As<ast::LitExpr>()->int64_val());
   // Filter value
   i64 val = call->arguments()[3]->As<ast::LitExpr>()->int64_val();
 
@@ -1383,22 +1355,8 @@ void BytecodeGenerator::VisitBuiltinIndexIteratorCall(ast::CallExpr *call, ast::
   ast::Context *ctx = call->type()->context();
 
   switch (builtin) {
-    case ast::Builtin::IndexIteratorConstructBind: {
-      std::string ns_name(call->arguments()[1]->As<ast::LitExpr>()->raw_string_val().data());
-      auto ns_oid = exec_ctx_->GetAccessor()->GetNamespaceOid(ns_name);
-      TPL_ASSERT(ns_oid != terrier::catalog::INVALID_NAMESPACE_OID, "Namespace does not exists");
-      std::string table_name(call->arguments()[2]->As<ast::LitExpr>()->raw_string_val().data());
-      auto table_oid = exec_ctx_->GetAccessor()->GetTableOid(ns_oid, table_name);
-      TPL_ASSERT(table_oid != terrier::catalog::INVALID_TABLE_OID, "Table does not exists");
-      std::string index_name(call->arguments()[3]->As<ast::LitExpr>()->raw_string_val().data());
-      auto index_oid = exec_ctx_->GetAccessor()->GetIndexOid(ns_oid, index_name);
-      TPL_ASSERT(index_oid != terrier::catalog::INVALID_INDEX_OID, "Index does not exists");
-      LocalVar exec_ctx = VisitExpressionForRValue(call->arguments()[4]);
-      emitter()->EmitIndexIteratorConstruct(Bytecode::IndexIteratorConstruct, iterator, !table_oid, !index_oid, exec_ctx);
-      break;
-    }
     case ast::Builtin::IndexIteratorConstruct: {
-      auto table_oid = static_cast<u32>(call->arguments()[1]->As<ast::LitExpr>()->int64_val());;
+      auto table_oid = static_cast<u32>(call->arguments()[1]->As<ast::LitExpr>()->int64_val());
       auto index_oid = static_cast<u32>(call->arguments()[2]->As<ast::LitExpr>()->int64_val());
       LocalVar exec_ctx = VisitExpressionForRValue(call->arguments()[3]);
       emitter()->EmitIndexIteratorConstruct(Bytecode::IndexIteratorConstruct, iterator, table_oid, index_oid, exec_ctx);
@@ -1409,21 +1367,8 @@ void BytecodeGenerator::VisitBuiltinIndexIteratorCall(ast::CallExpr *call, ast::
       break;
     }
     case ast::Builtin::IndexIteratorAddCol: {
-      auto col_oid = static_cast<u32>(call->arguments()[1]->As<ast::LitExpr>()->int64_val());;
+      auto col_oid = static_cast<u32>(call->arguments()[1]->As<ast::LitExpr>()->int64_val());
       emitter()->EmitAddCol(Bytecode::IndexIteratorAddCol, iterator, col_oid);
-      break;
-    }
-    case ast::Builtin::IndexIteratorAddColBind: {
-      std::string ns_name(call->arguments()[1]->As<ast::LitExpr>()->raw_string_val().data());
-      auto ns_oid = exec_ctx_->GetAccessor()->GetNamespaceOid(ns_name);
-      TPL_ASSERT(ns_oid != terrier::catalog::INVALID_NAMESPACE_OID, "Namespace does not exists");
-      std::string table_name(call->arguments()[2]->As<ast::LitExpr>()->raw_string_val().data());
-      auto table_oid = exec_ctx_->GetAccessor()->GetTableOid(ns_oid, table_name);
-      TPL_ASSERT(table_oid != terrier::catalog::INVALID_TABLE_OID, "Table does not exists");
-      std::string col_name(call->arguments()[3]->As<ast::LitExpr>()->raw_string_val().data());
-      auto col_oid = exec_ctx_->GetAccessor()->GetSchema(table_oid).GetColumn(col_name).Oid();
-      TPL_ASSERT(col_oid != terrier::catalog::INVALID_COLUMN_OID, "Column does not exists");
-      emitter()->EmitAddCol(Bytecode::IndexIteratorAddCol, iterator, !col_oid);
       break;
     }
     case ast::Builtin::IndexIteratorScanKey: {
@@ -1590,10 +1535,8 @@ void BytecodeGenerator::VisitBuiltinCallExpr(ast::CallExpr *call) {
       break;
     }
     case ast::Builtin::TableIterConstruct:
-    case ast::Builtin::TableIterConstructBind:
     case ast::Builtin::TableIterPerformInit:
     case ast::Builtin::TableIterAddCol:
-    case ast::Builtin::TableIterAddColBind:
     case ast::Builtin::TableIterAdvance:
     case ast::Builtin::TableIterGetPCI:
     case ast::Builtin::TableIterClose: {
@@ -1734,9 +1677,7 @@ void BytecodeGenerator::VisitBuiltinCallExpr(ast::CallExpr *call) {
       VisitBuiltinInsertCall(call, builtin);
       break;
     case ast::Builtin::IndexIteratorConstruct:
-    case ast::Builtin::IndexIteratorConstructBind:
     case ast::Builtin::IndexIteratorAddCol:
-    case ast::Builtin::IndexIteratorAddColBind:
     case ast::Builtin::IndexIteratorPerformInit:
     case ast::Builtin::IndexIteratorScanKey:
     case ast::Builtin::IndexIteratorAdvance:
@@ -1822,7 +1763,6 @@ void BytecodeGenerator::VisitLitExpr(ast::LitExpr *node) {
   TPL_ASSERT(execution_result()->IsRValue(), "Literal expressions cannot be R-Values!");
 
   LocalVar target = execution_result()->GetOrCreateDestination(node->type());
-  std::cout << "LITERAL KIND: " << i32(node->literal_kind()) << std::endl;
   switch (node->literal_kind()) {
     case ast::LitExpr::LitKind::Nil: {
       // Do nothing
@@ -2347,4 +2287,4 @@ std::unique_ptr<BytecodeModule> BytecodeGenerator::Compile(ast::AstNode *root, e
   return std::make_unique<BytecodeModule>(name, std::move(generator.bytecode_), std::move(generator.functions_));
 }
 
-}  // namespace tpl::vm
+}  // namespace terrier::vm

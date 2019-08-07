@@ -10,7 +10,7 @@
 #include "execution/sql/table_generator/table_reader.h"
 #include "transaction/transaction_context.h"
 
-namespace tpl::sql {
+namespace terrier::sql {
 
 // Keep small so that nested loop join won't take too long.
 /**
@@ -37,8 +37,12 @@ class TableGenerator {
   /**
    * Constructor
    * @param exec_ctx execution context of the test
+   * @param store block store to use when creating tables
+   * @param ns_oid oid of the namespace
    */
-  explicit TableGenerator(exec::ExecutionContext *exec_ctx, terrier::storage::BlockStore * store, terrier::catalog::namespace_oid_t ns_oid) : exec_ctx_{exec_ctx}, store_{store}, ns_oid_{ns_oid}, table_reader{exec_ctx, store, ns_oid} {}
+  explicit TableGenerator(exec::ExecutionContext *exec_ctx, terrier::storage::BlockStore *store,
+                          terrier::catalog::namespace_oid_t ns_oid)
+      : exec_ctx_{exec_ctx}, store_{store}, ns_oid_{ns_oid}, table_reader{exec_ctx, store, ns_oid} {}
 
   /**
    * Generate the tables withing a directory
@@ -65,7 +69,7 @@ class TableGenerator {
 
  private:
   exec::ExecutionContext *exec_ctx_;
-  terrier::storage::BlockStore * store_;
+  terrier::storage::BlockStore *store_;
   terrier::catalog::namespace_oid_t ns_oid_;
   TableReader table_reader;
 
@@ -143,26 +147,25 @@ class TableGenerator {
     /**
      * Name of the column
      */
-    const char * name_;
-
+    const char *name;
     /**
      * Type of the column
      */
-    const terrier::type::TypeId type_;
+    const terrier::type::TypeId type;
     /**
      * Whether the columns is nullable
      */
-    bool nullable_;
+    bool nullable;
     /**
-     * Index in the original table
+     * Column name in the original table
      */
-    uint32_t table_col_idx_;
+    const char *table_col_name;
 
     /**
      * Constructor
      */
-    IndexColumn(const char * name, const terrier::type::TypeId type, bool nullable, uint32_t table_col_idx)
-        : name_(name), type_(type), nullable_(nullable), table_col_idx_(table_col_idx) {}
+    IndexColumn(const char *name, const terrier::type::TypeId type, bool nullable, const char *table_col_name)
+        : name(name), type(type), nullable(nullable), table_col_name(table_col_name) {}
   };
 
   /**
@@ -199,13 +202,18 @@ class TableGenerator {
   std::pair<byte *, u32 *> GenerateColumnData(const ColumnInsertMeta &col_meta, u32 num_rows);
 
   // Fill a given table according to its metadata
-  void FillTable(terrier::catalog::table_oid_t table_oid, terrier::common::ManagedPointer<terrier::storage::SqlTable> table, const terrier::catalog::Schema & schema, const TableInsertMeta &table_meta);
+  void FillTable(terrier::catalog::table_oid_t table_oid,
+                 terrier::common::ManagedPointer<terrier::storage::SqlTable> table,
+                 const terrier::catalog::Schema &schema, const TableInsertMeta &table_meta);
 
-  void FillIndex(terrier::common::ManagedPointer<terrier::storage::index::Index> index, const terrier::catalog::IndexSchema & index_schema, const IndexInsertMeta & index_meta, terrier::common::ManagedPointer<terrier::storage::SqlTable> table, const terrier::catalog::Schema & table_schema);
+  void FillIndex(terrier::common::ManagedPointer<terrier::storage::index::Index> index,
+                 const terrier::catalog::IndexSchema &index_schema, const IndexInsertMeta &index_meta,
+                 terrier::common::ManagedPointer<terrier::storage::SqlTable> table,
+                 const terrier::catalog::Schema &table_schema);
 
   terrier::parser::ConstantValueExpression DummyCVE() {
     return terrier::parser::ConstantValueExpression(terrier::type::TransientValueFactory::GetInteger(0));
   }
 };
 
-}  // namespace tpl::sql
+}  // namespace terrier::sql

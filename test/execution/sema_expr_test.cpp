@@ -12,11 +12,11 @@
 #include "execution/sema/sema.h"
 #include "execution/util/region_containers.h"
 
-namespace tpl::sema::test {
+namespace terrier::sema::test {
 
 class SemaExprTest : public TplTest, public ast::test::TestAstBuilder {
  public:
-  SemaExprTest() : TestAstBuilder() {}
+  SemaExprTest() = default;
 
   void SetUp() override {
     TplTest::SetUp();
@@ -202,4 +202,4 @@ TEST_F(SemaExprTest, ArrayIndexTest) {
   }
 }
 
-}  // namespace tpl::sema::test
+}  // namespace terrier::sema::test

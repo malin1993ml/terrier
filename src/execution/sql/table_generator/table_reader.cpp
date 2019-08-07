@@ -1,12 +1,12 @@
+#include <storage/index/index_builder.h>
 #include <string>
 #include <vector>
-#include <storage/index/index_builder.h>
 
+#include "csv/csv.h" // NOLINT
 #include "execution/sql/table_generator/table_reader.h"
 #include "execution/sql/value.h"
-#include "csv/csv.h"
 
-namespace tpl::sql {
+namespace terrier::sql {
 
 uint32_t TableReader::ReadTable(const std::string &schema_file, const std::string &data_file) {
   uint32_t val_written = 0;
@@ -18,22 +18,30 @@ uint32_t TableReader::ReadTable(const std::string &schema_file, const std::strin
 
   // Init table projected row
   auto table = exec_ctx_->GetAccessor()->GetTable(table_oid);
-  auto & table_schema = exec_ctx_->GetAccessor()->GetSchema(table_oid);
+  auto &table_schema = exec_ctx_->GetAccessor()->GetSchema(table_oid);
   std::vector<terrier::catalog::col_oid_t> table_cols;
-  for (const auto & col : table_schema.GetColumns()) {
+  for (const auto &col : table_schema.GetColumns()) {
     table_cols.emplace_back(col.Oid());
   }
   auto pri_map = table->InitializerForProjectedRow(table_cols);
-  auto & pri = pri_map.first;
-  auto & offset_map = pri_map.second;
+  auto &pri = pri_map.first;
+
   // Init index prs
   std::vector<terrier::storage::ProjectedRow *> index_prs;
   for (const auto &index_oid : index_oids) {
     auto index = exec_ctx_->GetAccessor()->GetIndex(index_oid);
-    auto & index_pri = index->GetProjectedRowInitializer();
+    auto &index_pri = index->GetProjectedRowInitializer();
     byte *index_buffer = terrier::common::AllocationUtil::AllocateAligned(index_pri.ProjectedRowSize());
     auto index_pr = index_pri.InitializeRow(index_buffer);
     index_prs.emplace_back(index_pr);
+  }
+
+  // Set table column offsets
+  auto &offset_map = pri_map.second;
+  std::vector<u16> table_offsets;
+  for (const auto &col_info : table_info->cols) {
+    const auto &col = table_schema.GetColumn(col_info.Name());
+    table_offsets.emplace_back(offset_map[col.Oid()]);
   }
 
   // Iterate through CSV file
@@ -43,8 +51,8 @@ uint32_t TableReader::ReadTable(const std::string &schema_file, const std::strin
     auto *const redo = exec_ctx_->GetTxn()->StageWrite(exec_ctx_->DBOid(), table_oid, pri);
     uint16_t col_idx = 0;
     for (csv::CSVField &field : row) {
-      auto col_offset = offset_map[table_schema.GetColumn(col_idx).Oid()];
-      auto col_type = table_schema.GetColumn(col_idx).Type();
+      auto col_offset = table_offsets[col_idx];
+      auto col_type = table_info->cols[col_idx].Type();
       WriteTableCol(redo->Delta(), col_offset, col_type, &field);
       col_idx++;
     }
@@ -63,11 +71,10 @@ uint32_t TableReader::ReadTable(const std::string &schema_file, const std::strin
       for (u32 index_col_idx = 0; index_col_idx < index_schema.GetColumns().size(); index_col_idx++) {
         // Get the offset of this column in the table
         u16 table_col_idx = table_info->indexes[index_idx]->index_map[index_col_idx];
-        u16 table_offset = offset_map[table_schema.GetColumn(table_col_idx).Oid()];
+        u16 table_offset = table_offsets[table_col_idx];
         // Get the offset of this column in the index
         auto &index_col = index_schema.GetColumn(index_col_idx);
-        u16 index_offset =
-            static_cast<u16>(index->GetKeyOidToOffsetMap().at(index_col.Oid()));
+        u16 index_offset = static_cast<u16>(index->GetKeyOidToOffsetMap().at(index_col.Oid()));
         // Check null and write bytes.
         if (index_col.Nullable() && redo->Delta()->IsNull(table_offset)) {
           index_pr->SetNull(index_offset);
@@ -83,8 +90,8 @@ uint32_t TableReader::ReadTable(const std::string &schema_file, const std::strin
   }
 
   // Deallocate
-  for (auto & index_pr : index_prs) {
-    delete [] reinterpret_cast<byte*>(index_pr);
+  for (auto &index_pr : index_prs) {
+    delete[] reinterpret_cast<byte *>(index_pr);
   }
 
   // Return
@@ -92,23 +99,26 @@ uint32_t TableReader::ReadTable(const std::string &schema_file, const std::strin
 }
 
 terrier::catalog::table_oid_t TableReader::CreateTable(TableInfo *info) {
-  auto table_oid = exec_ctx_->GetAccessor()->CreateTable(ns_oid_, info->table_name, *info->schema);
-  auto & schema = exec_ctx_->GetAccessor()->GetSchema(table_oid);
+  terrier::catalog::Schema tmp_schema{info->cols};
+  auto table_oid = exec_ctx_->GetAccessor()->CreateTable(ns_oid_, info->table_name, tmp_schema);
+  auto &schema = exec_ctx_->GetAccessor()->GetSchema(table_oid);
   auto sql_table = new terrier::storage::SqlTable(store_, schema);
   exec_ctx_->GetAccessor()->SetTablePointer(table_oid, sql_table);
   return table_oid;
 }
 
-std::vector<terrier::catalog::index_oid_t> TableReader::CreateIndexes(TableInfo *info, terrier::catalog::table_oid_t table_oid) {
+std::vector<terrier::catalog::index_oid_t> TableReader::CreateIndexes(TableInfo *info,
+                                                                      terrier::catalog::table_oid_t table_oid) {
   std::vector<terrier::catalog::index_oid_t> results;
   terrier::storage::index::IndexBuilder index_builder;
   for (const auto &index_info : info->indexes) {
-    auto index_oid = exec_ctx_->GetAccessor()->CreateIndex(ns_oid_, table_oid, index_info->index_name, *index_info->schema);
-    auto & schema = exec_ctx_->GetAccessor()->GetIndexSchema(index_oid);
+    terrier::catalog::IndexSchema tmp_schema{index_info->cols, false, false, false, false};
+    auto index_oid = exec_ctx_->GetAccessor()->CreateIndex(ns_oid_, table_oid, index_info->index_name, tmp_schema);
+    auto &schema = exec_ctx_->GetAccessor()->GetIndexSchema(index_oid);
     index_builder.SetOid(index_oid);
     index_builder.SetConstraintType(terrier::storage::index::ConstraintType::DEFAULT);
     index_builder.SetKeySchema(schema);
-    auto * index = index_builder.Build();
+    auto *index = index_builder.Build();
     exec_ctx_->GetAccessor()->SetIndexPointer(index_oid, index);
     results.emplace_back(index_oid);
   }
@@ -174,4 +184,4 @@ void TableReader::WriteTableCol(terrier::storage::ProjectedRow *insert_pr, uint1
   }
 }
 
-}  // namespace tpl::sql
+}  // namespace terrier::sql

@@ -5,7 +5,7 @@
 
 #include "execution/vm/bytecode_label.h"
 
-namespace tpl::vm {
+namespace terrier::vm {
 
 void BytecodeEmitter::EmitDeref(Bytecode bytecode, LocalVar dest, LocalVar src) {
   TPL_ASSERT(bytecode == Bytecode::Deref1 || bytecode == Bytecode::Deref2 || bytecode == Bytecode::Deref4 ||
@@ -253,10 +253,7 @@ void BytecodeEmitter::EmitTableIterConstruct(Bytecode bytecode, LocalVar iter, u
   EmitAll(bytecode, iter, table_oid, exec_ctx);
 }
 
-void BytecodeEmitter::EmitAddCol(Bytecode bytecode, LocalVar iter, u32 col_oid) {
-  EmitAll(bytecode, iter, col_oid);
-}
-
+void BytecodeEmitter::EmitAddCol(Bytecode bytecode, LocalVar iter, u32 col_oid) { EmitAll(bytecode, iter, col_oid); }
 
 void BytecodeEmitter::EmitParallelTableScan(u32 db_oid, u32 table_oid, LocalVar ctx, LocalVar thread_states,
                                             FunctionId scan_fn) {
@@ -317,8 +314,8 @@ void BytecodeEmitter::EmitOutputSetNull(Bytecode bytecode, LocalVar exec_ctx, Lo
   EmitAll(bytecode, exec_ctx, idx);
 }
 
-void BytecodeEmitter::EmitIndexIteratorConstruct(Bytecode bytecode, LocalVar iter, uint32_t table_oid, uint32_t index_oid,
-                                            LocalVar exec_ctx) {
+void BytecodeEmitter::EmitIndexIteratorConstruct(Bytecode bytecode, LocalVar iter, uint32_t table_oid,
+                                                 uint32_t index_oid, LocalVar exec_ctx) {
   EmitAll(bytecode, iter, table_oid, index_oid, exec_ctx);
 }
 
@@ -336,4 +333,4 @@ void BytecodeEmitter::EmitInitString(Bytecode bytecode, LocalVar out, u64 length
   EmitAll(bytecode, out, length, data);
 }
 
-}  // namespace tpl::vm
+}  // namespace terrier::vm

@@ -6,20 +6,20 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include "catalog/schema.h"
 #include "catalog/catalog_accessor.h"
-#include "transaction/transaction_context.h"
-#include "type/type_id.h"
+#include "catalog/schema.h"
 #include "parser/expression/constant_value_expression.h"
+#include "transaction/transaction_context.h"
 #include "type/transient_value_factory.h"
+#include "type/type_id.h"
 
-namespace tpl::sql {
+namespace terrier::sql {
 
 // Maps from index columns to table columns.
 using IndexTableMap = std::vector<uint16_t>;
 
 /**
- * Stores info about an index
+ * Stores info about an index read from a file
  */
 struct IndexInfo {
   /**
@@ -34,7 +34,7 @@ struct IndexInfo {
   /**
    * Index Schema
    */
-  std::unique_ptr<terrier::catalog::IndexSchema> schema;
+  std::vector<terrier::catalog::IndexSchema::Column> cols;
 
   /**
    * Mapping from index column to table column
@@ -43,7 +43,7 @@ struct IndexInfo {
 };
 
 /**
- * Stores table information
+ * Stores table information read from a file
  */
 struct TableInfo {
   /**
@@ -58,7 +58,7 @@ struct TableInfo {
   /**
    * Table Schema
    */
-  std::unique_ptr<terrier::catalog::Schema> schema;
+  std::vector<terrier::catalog::Schema::Column> cols;
 
   /**
    * indexes
@@ -86,8 +86,8 @@ class SchemaReader {
   /**
    * Constructor
    */
-  explicit SchemaReader()
-       : type_names_{{"tinyint", terrier::type::TypeId::TINYINT}, {"smallint", terrier::type::TypeId::SMALLINT},
+  SchemaReader()
+      : type_names_{{"tinyint", terrier::type::TypeId::TINYINT}, {"smallint", terrier::type::TypeId::SMALLINT},
                     {"int", terrier::type::TypeId::INTEGER},     {"bigint", terrier::type::TypeId::BIGINT},
                     {"bool", terrier::type::TypeId::BOOLEAN},    {"real", terrier::type::TypeId::DECIMAL},
                     {"decimal", terrier::type::TypeId::DECIMAL}, {"varchar", terrier::type::TypeId::VARCHAR},
@@ -109,9 +109,7 @@ class SchemaReader {
     schema_file >> table_info->table_name >> num_cols;
     std::cout << "Reading table " << table_info->table_name << " with " << num_cols << " columns." << std::endl;
     // Read columns & create table schema
-    std::vector<terrier::catalog::Schema::Column> cols{ReadColumns(&schema_file, num_cols)};
-    table_info->schema = std::make_unique<terrier::catalog::Schema>(cols);
-
+    table_info->cols = ReadColumns(&schema_file, num_cols);
     // Read num_indexes & create index information
     uint32_t num_indexes;
     schema_file >> num_indexes;
@@ -133,11 +131,11 @@ class SchemaReader {
       for (uint32_t j = 0; j < num_index_cols; j++) {
         *in >> col_idx;
         index_info->index_map.emplace_back(col_idx);
-        const auto &table_column = table_info->schema->GetColumn(col_idx);
-        index_cols.emplace_back("index_col" + std::to_string(col_idx), table_column. Type(), table_column.Nullable(), DummyCVE());
+        const auto &table_column = table_info->cols[col_idx];
+        index_info->cols.emplace_back("index_col" + std::to_string(col_idx), table_column.Type(),
+                                      table_column.Nullable(), DummyCVE());
       }
       // Update list of indexes
-      index_info->schema = std::make_unique<terrier::catalog::IndexSchema>(index_cols, false, false, false, false);
       table_info->indexes.emplace_back(std::move(index_info));
     }
   }
@@ -179,4 +177,4 @@ class SchemaReader {
   // Supported types
   const std::unordered_map<std::string, terrier::type::TypeId> type_names_;
 };
-}  // namespace tpl::sql
+}  // namespace terrier::sql

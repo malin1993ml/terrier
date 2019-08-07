@@ -14,14 +14,14 @@
 #include "execution/sql/table_vector_iterator.h"
 #include "type/type_id.h"
 
-namespace tpl::sql::test {
+namespace terrier::sql::test {
 
 class FilterManagerTest : public SqlBasedTest {
   void SetUp() override {
     // Create the test tables
     SqlBasedTest::SetUp();
     exec_ctx_ = MakeExecCtx();
-    sql::TableGenerator table_generator{exec_ctx_.get()};
+    sql::TableGenerator table_generator{exec_ctx_.get(), BlockStore(), NSOid()};
     table_generator.GenerateTestTables();
   }
 
@@ -59,8 +59,8 @@ TEST_F(FilterManagerTest, SimpleFilterManagerTest) {
   filter.InsertClauseFlavor(TaaT_Lt_500);
   filter.InsertClauseFlavor(Vectorized_Lt_500);
   filter.Finalize();
-  auto catalog_table = exec_ctx_->GetAccessor()->GetUserTable("test_1");
-  TableVectorIterator tvi(!catalog_table->Oid(), exec_ctx_.get());
+  auto table_oid = exec_ctx_->GetAccessor()->GetTableOid(NSOid(), "test_1");
+  TableVectorIterator tvi(!table_oid, exec_ctx_.get());
   for (tvi.Init(); tvi.Advance();) {
     auto *pci = tvi.projected_columns_iterator();
 
@@ -82,8 +82,8 @@ TEST_F(FilterManagerTest, AdaptiveFilterManagerTest) {
   filter.InsertClauseFlavor(Hobbled_TaaT_Lt_500);
   filter.InsertClauseFlavor(Vectorized_Lt_500);
   filter.Finalize();
-  auto catalog_table = exec_ctx_->GetAccessor()->GetUserTable("test_1");
-  TableVectorIterator tvi(!catalog_table->Oid(), exec_ctx_.get());
+  auto table_oid = exec_ctx_->GetAccessor()->GetTableOid(NSOid(), "test_1");
+  TableVectorIterator tvi(!table_oid, exec_ctx_.get());
   for (tvi.Init(); tvi.Advance();) {
     auto *pci = tvi.projected_columns_iterator();
 
@@ -101,4 +101,4 @@ TEST_F(FilterManagerTest, AdaptiveFilterManagerTest) {
   EXPECT_EQ(1u, filter.GetOptimalFlavorForClause(0));
 }
 
-}  // namespace tpl::sql::test
+}  // namespace terrier::sql::test
