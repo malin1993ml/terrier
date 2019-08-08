@@ -19,7 +19,7 @@
 
 #include "loggers/execution_logger.h"
 
-namespace terrier {
+namespace terrier::execution {
 
 struct {
   CpuInfo::Feature feature;
@@ -161,4 +161,4 @@ std::string CpuInfo::PrettyPrintInfo() const {
   return ss.str();
 }
 
-}  // namespace terrier
+}  // namespace terrier::execution

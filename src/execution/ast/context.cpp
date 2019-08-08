@@ -28,7 +28,7 @@
 #include "execution/util/common.h"
 #include "execution/util/math_util.h"
 
-namespace terrier::ast {
+namespace terrier::execution::ast {
 
 // ---------------------------------------------------------
 // Key type used in the cache for struct types in the context
@@ -38,8 +38,6 @@ namespace terrier::ast {
  * Compute a hash_code for a field
  */
 llvm::hash_code hash_value(const Field &field) { return llvm::hash_combine(field.name.data(), field.type); }
-
-using terrier::type::TypeId;
 
 struct StructTypeKeyInfo {
   struct KeyTy {
@@ -325,4 +323,4 @@ FunctionType *FunctionType::Get(util::RegionVector<Field> &&params, Type *ret) {
   return func_type;
 }
 
-}  // namespace terrier::ast
+}  // namespace terrier::execution::ast

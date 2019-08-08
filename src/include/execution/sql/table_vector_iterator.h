@@ -7,12 +7,7 @@
 #include "execution/sql/projected_columns_iterator.h"
 #include "storage/sql_table.h"
 
-namespace terrier::sql {
-using terrier::catalog::db_oid_t;
-using terrier::catalog::namespace_oid_t;
-using terrier::catalog::table_oid_t;
-using terrier::storage::DataTable;
-
+namespace terrier::execution::sql {
 class ThreadStateContainer;
 
 /**
@@ -94,19 +89,19 @@ class TableVectorIterator {
  private:
   // The PCI
   ProjectedColumnsIterator pci_;
-  const table_oid_t table_oid_;
+  const catalog::table_oid_t table_oid_;
   // SqlTable to iterate over
-  terrier::common::ManagedPointer<terrier::storage::SqlTable> table_{nullptr};
-  std::vector<terrier::catalog::col_oid_t> col_oids_{};
+  common::ManagedPointer<storage::SqlTable> table_{nullptr};
+  std::vector<catalog::col_oid_t> col_oids_{};
   // A PC and its buffer.
   byte *buffer_ = nullptr;
-  terrier::storage::ProjectedColumns *projected_columns_ = nullptr;
+  storage::ProjectedColumns *projected_columns_ = nullptr;
 
   // Iterator of the slots in the PC
-  std::unique_ptr<DataTable::SlotIterator> iter_ = nullptr;
+  std::unique_ptr<storage::DataTable::SlotIterator> iter_ = nullptr;
   exec::ExecutionContext *exec_ctx_;
 
   bool initialized = false;
 };
 
-}  // namespace terrier::sql
+}  // namespace terrier::execution::sql

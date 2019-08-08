@@ -9,7 +9,7 @@
 #include "execution/sema/error_reporter.h"
 #include "execution/sema/scope.h"
 
-namespace terrier {
+namespace terrier::execution {
 
 namespace ast {
 class Context;
@@ -75,7 +75,7 @@ class Sema : public ast::AstVisitor<Sema> {
   }
 
   // Convert the given schema into a row type
-  ast::Type *GetRowTypeFromSqlSchema(const terrier::catalog::Schema &schema);
+  ast::Type *GetRowTypeFromSqlSchema(const catalog::Schema &schema);
 
   // Create a builtin type
   ast::Type *GetBuiltinType(u16 builtin_kind);
@@ -257,4 +257,4 @@ class Sema : public ast::AstVisitor<Sema> {
 };
 
 }  // namespace sema
-}  // namespace terrier
+}  // namespace terrier::execution

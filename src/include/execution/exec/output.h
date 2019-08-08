@@ -13,7 +13,7 @@
 #include "execution/util/common.h"
 #include "planner/plannodes/output_schema.h"
 
-namespace terrier::exec {
+namespace terrier::execution::exec {
 
 // Assumes the user of the callback knows the output schema
 // So it can get read attributes itself.
@@ -87,7 +87,7 @@ class OutputPrinter {
    * Constructor
    * @param schema final schema to output
    */
-  explicit OutputPrinter(const terrier::planner::OutputSchema *schema) : schema_(schema) {}
+  explicit OutputPrinter(const planner::OutputSchema *schema) : schema_(schema) {}
 
   /**
    * Callback that prints a batch of tuples to std out.
@@ -99,7 +99,7 @@ class OutputPrinter {
 
  private:
   uint32_t printed_ = 0;
-  const terrier::planner::OutputSchema *schema_;
+  const planner::OutputSchema *schema_;
 };
 
-}  // namespace terrier::exec
+}  // namespace terrier::execution::exec

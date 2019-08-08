@@ -1,5 +1,4 @@
 #include <gflags/gflags.h>
-#include <tbb/task_scheduler_init.h>  // NOLINT
 #include <unistd.h>
 #include <algorithm>
 #include <csignal>
@@ -8,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include "tbb/task_scheduler_init.h"
 
 #include "execution/ast/ast_dump.h"
 #include "execution/exec/execution_context.h"
@@ -19,7 +19,7 @@
 #include "execution/sql/memory_pool.h"
 #include "execution/sql/table_generator/sample_output.h"
 #include "execution/sql/table_generator/table_generator.h"
-#include "execution/tpl.h"  // NOLINT
+#include "execution/tpl.h"
 #include "execution/util/cpu_info.h"
 #include "execution/util/timer.h"
 #include "execution/vm/bytecode_generator.h"
@@ -43,18 +43,21 @@
 // CLI options
 // ---------------------------------------------------------
 
-// clang-format off
-llvm::cl::OptionCategory kTplOptionsCategory("TPL Compiler Options", "Options for controlling the TPL compilation process.");  // NOLINT
-llvm::cl::opt<std::string> kInputFile(llvm::cl::Positional, llvm::cl::desc("<input file>"), llvm::cl::init(""), llvm::cl::cat(kTplOptionsCategory));  // NOLINT
-llvm::cl::opt<bool> kPrintAst("print-ast", llvm::cl::desc("Print the programs AST"), llvm::cl::cat(kTplOptionsCategory));  // NOLINT
-llvm::cl::opt<bool> kPrintTbc("print-tbc", llvm::cl::desc("Print the generated TPL Bytecode"), llvm::cl::cat(kTplOptionsCategory));  // NOLINT
-llvm::cl::opt<std::string> kOutputName("output-name", llvm::cl::desc("Print the output name"), llvm::cl::init("schema1"), llvm::cl::cat(kTplOptionsCategory));  // NOLINT
-llvm::cl::opt<bool> kIsSQL("sql", llvm::cl::desc("Is the input a SQL query?"), llvm::cl::cat(kTplOptionsCategory));  // NOLINT
-// clang-format on
+llvm::cl::OptionCategory kTplOptionsCategory("TPL Compiler Options",
+                                             "Options for controlling the TPL compilation process.");
+llvm::cl::opt<std::string> kInputFile(llvm::cl::Positional, llvm::cl::desc("<input file>"), llvm::cl::init(""),
+                                      llvm::cl::cat(kTplOptionsCategory));
+llvm::cl::opt<bool> kPrintAst("print-ast", llvm::cl::desc("Print the programs AST"),
+                              llvm::cl::cat(kTplOptionsCategory));
+llvm::cl::opt<bool> kPrintTbc("print-tbc", llvm::cl::desc("Print the generated TPL Bytecode"),
+                              llvm::cl::cat(kTplOptionsCategory));
+llvm::cl::opt<std::string> kOutputName("output-name", llvm::cl::desc("Print the output name"),
+                                       llvm::cl::init("schema1"), llvm::cl::cat(kTplOptionsCategory));
+llvm::cl::opt<bool> kIsSQL("sql", llvm::cl::desc("Is the input a SQL query?"), llvm::cl::cat(kTplOptionsCategory));
 
 tbb::task_scheduler_init scheduler;
 
-namespace terrier {
+namespace terrier::execution {
 
 static constexpr const char *kExitKeyword = ".exit";
 
@@ -66,10 +69,10 @@ static constexpr const char *kExitKeyword = ".exit";
  */
 static void CompileAndRun(const std::string &source, const std::string &name = "tmp-tpl") {
   // Initialize terrier objects
-  terrier::storage::BlockStore block_store(1000, 1000);
-  terrier::storage::RecordBufferSegmentPool buffer_pool(100000, 100000);
-  terrier::transaction::TransactionManager txn_manager(&buffer_pool, true, nullptr);
-  terrier::storage::GarbageCollector gc(&txn_manager, nullptr);
+  storage::BlockStore block_store(1000, 1000);
+  storage::RecordBufferSegmentPool buffer_pool(100000, 100000);
+  transaction::TransactionManager txn_manager(&buffer_pool, true, nullptr);
+  storage::GarbageCollector gc(&txn_manager, nullptr);
   auto *txn = txn_manager.BeginTransaction();
 
   // Get the correct output format for this test
@@ -78,10 +81,10 @@ static void CompileAndRun(const std::string &source, const std::string &name = "
   auto output_schema = sample_output.GetSchema(kOutputName.data());
 
   // Make the catalog accessor
-  terrier::catalog::Catalog catalog(&txn_manager, &block_store);
+  catalog::Catalog catalog(&txn_manager, &block_store);
 
   auto db_oid = catalog.CreateDatabase(txn, "test_db", true);
-  auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
+  auto accessor = std::unique_ptr<catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
   auto ns_oid = accessor->GetDefaultNamespace();
 
   // Make the execution context
@@ -301,13 +304,13 @@ static void RunFile(const std::string &filename) {
  * Initialize all TPL subsystems
  */
 void InitTPL() {
-  terrier::CpuInfo::Instance();
+  execution::CpuInfo::Instance();
 
   terrier::LoggersUtil::Initialize(false);
 
-  terrier::vm::LLVMEngine::Initialize();
+  execution::vm::LLVMEngine::Initialize();
 
-  EXECUTION_LOG_INFO("TPL Bytecode Count: {}", terrier::vm::Bytecodes::NumBytecodes());
+  EXECUTION_LOG_INFO("TPL Bytecode Count: {}", execution::vm::Bytecodes::NumBytecodes());
 
   EXECUTION_LOG_INFO("TPL initialized ...");
 }
@@ -316,7 +319,7 @@ void InitTPL() {
  * Shutdown all TPL subsystems
  */
 void ShutdownTPL() {
-  terrier::vm::LLVMEngine::Shutdown();
+  terrier::execution::vm::LLVMEngine::Shutdown();
   terrier::LoggersUtil::ShutDown();
 
   scheduler.terminate();
@@ -324,11 +327,11 @@ void ShutdownTPL() {
   LOG_INFO("TPL cleanly shutdown ...");
 }
 
-}  // namespace terrier
+}  // namespace terrier::execution
 
 void SignalHandler(i32 sig_num) {
   if (sig_num == SIGINT) {
-    terrier::ShutdownTPL();
+    terrier::execution::ShutdownTPL();
     exit(0);
   }
 }
@@ -351,21 +354,21 @@ int main(int argc, char **argv) {  // NOLINT (bugprone-exception-escape)
   }
 
   // Init TPL
-  terrier::InitTPL();
+  terrier::execution::InitTPL();
 
-  EXECUTION_LOG_INFO("\n{}", terrier::CpuInfo::Instance()->PrettyPrintInfo());
+  EXECUTION_LOG_INFO("\n{}", terrier::execution::CpuInfo::Instance()->PrettyPrintInfo());
 
   EXECUTION_LOG_INFO("Welcome to TPL (ver. {}.{})", TPL_VERSION_MAJOR, TPL_VERSION_MINOR);
 
   // Either execute a TPL program from a source file, or run REPL
   if (!kInputFile.empty()) {
-    terrier::RunFile(kInputFile);
+    terrier::execution::RunFile(kInputFile);
   } else if (argc == 1) {
-    terrier::RunRepl();
+    terrier::execution::RunRepl();
   }
 
   // Cleanup
-  terrier::ShutdownTPL();
+  terrier::execution::ShutdownTPL();
 
   return 0;
 }

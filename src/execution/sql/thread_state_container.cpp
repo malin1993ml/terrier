@@ -3,9 +3,9 @@
 #include <memory>
 #include <vector>
 
-#include <tbb/tbb.h>  // NOLINT
+#include "tbb/tbb.h"
 
-namespace terrier::sql {
+namespace terrier::execution::sql {
 
 // ---------------------------------------------------------
 // Thread Local State Handle
@@ -100,4 +100,4 @@ void ThreadStateContainer::IterateStates(void *const ctx, ThreadStateContainer::
   }
 }
 
-}  // namespace terrier::sql
+}  // namespace terrier::execution::sql

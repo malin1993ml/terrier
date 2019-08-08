@@ -1,8 +1,8 @@
 #pragma once
 
-#include <tbb/enumerable_thread_specific.h>
+#include "tbb/enumerable_thread_specific.h"
 
-namespace terrier::sql {
+namespace terrier::execution::sql {
 
 /**
  * TODO: track memory usage
@@ -15,4 +15,4 @@ class MemoryTracker {
   tbb::enumerable_thread_specific<Stats> stats_;
 };
 
-}  // namespace terrier::sql
+}  // namespace terrier::execution::sql
