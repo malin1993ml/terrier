@@ -90,6 +90,7 @@ namespace terrier::execution {
             auto output_schema = sample_output_pointer_->GetSchema(kOutputName.data());
             exec::OutputPrinter printer(output_schema);
             auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog_pointer_->GetAccessor(txn, db_oid_));
+
             exec::ExecutionContext exec_ctx{db_oid_, txn, printer, output_schema, std::move(accessor)};
 
             //-----------------------------------------
@@ -336,7 +337,7 @@ namespace terrier::execution {
             // Init TPL
             execution::CpuInfo::Instance();
 
-            terrier::LoggersUtil::Initialize(false);
+            //terrier::LoggersUtil::Initialize(false);
 
             execution::vm::LLVMEngine::Initialize();
 
@@ -360,6 +361,7 @@ namespace terrier::execution {
 
 
             auto txn = txn_manager.BeginTransaction();
+
             // Get the correct output format for this test
             sample_output.InitTestOutput();
             auto output_schema = sample_output.GetSchema(kOutputName.data());
@@ -367,7 +369,7 @@ namespace terrier::execution {
             // Make the catalog accessor
             db_oid = catalog.CreateDatabase(txn, "test_db", true);
             auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
-            auto ns_oid = accessor->CreateNamespace("test_ns");
+            auto ns_oid = accessor->GetDefaultNamespace();
 
             // Make the execution context
             exec::OutputPrinter printer(output_schema);
@@ -380,6 +382,7 @@ namespace terrier::execution {
             table_generator.GenerateTPCHTables("../sample_tpl/tables/");
             table_generator.GenerateTableFromFile("../sample_tpl/tables/types1.schema", "../sample_tpl/tables/types1.data");
             // table_generator.GenerateTableFromFile("../sample_tpl/tables/part.schema", "../sample_tpl/tables/part.data");
+
             txn_manager.Commit(txn, [](void *) {}, nullptr);
 
             return 0;

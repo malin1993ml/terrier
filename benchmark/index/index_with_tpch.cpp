@@ -41,11 +41,11 @@ namespace terrier {
 // this is the maximum num_inserts, num_threads and num_columns
 // for initialization and full experiment
         static const int max_num_columns_ = 5;
-        // static const uint32_t max_num_inserts_ = 10000000;//(2 << 27);
-        static const uint32_t max_num_inserts_ = 10000;
+        static const uint32_t max_num_inserts_ = 10000000;//(2 << 27);
+        //static const uint32_t max_num_inserts_ = 10000;
         static const uint32_t total_num_inserts_ = max_num_inserts_ * 2; // 2 times of maximum inserts
-        //static const uint32_t max_num_threads_ = 18;
-        static const uint32_t max_num_threads_ = 4;
+        static const uint32_t max_num_threads_ = 18;
+        //static const uint32_t max_num_threads_ = 4;
         static const uint32_t num_inserts_per_table_ = max_num_inserts_ / max_num_threads_ + 1;
 
         static const uint32_t tpch_filenum_ = 4;
@@ -56,9 +56,10 @@ namespace terrier {
         static constexpr uint32_t core_ids_[18] = {0, 1, 2, 3, 4, 5, 6, 7, 8,
                                            20, 21, 22, 23, 24, 25, 26, 27, 28};
         const char * cmd0 = "tpl";
-        const char * cmd1 = "-sql";
-        const char * cmd2 = "../sample_tpl/tpch/q1.tpl";
-        const char * cmd_for_tpch[3] = {cmd0, cmd1, cmd2};
+        //const char * cmd1 = "";//"-output-name=tpch_q1";
+        const char * cmd2 = "-sql";
+        const char * cmd3 = "../sample_tpl/tpch/q1.tpl";
+        const char * cmd_for_tpch[3] = {cmd0, cmd2, cmd3};
         
 #ifdef PARTIAL_TEST
 // if not full experiment, set the list of num_inserts, num_threads and num_columns
@@ -69,8 +70,8 @@ namespace terrier {
                                                16777216, 33554432, 67108864, 134217728};
         const uint32_t num_threads_list_[3] = {4, 8, 12};
         const int num_columns_list_[3] = {1, 3, 5};*/
-        const uint32_t num_inserts_list_[1] = {10000};
-        const uint32_t num_threads_list_[1] = {3};
+        const uint32_t num_inserts_list_[1] = {10000000};
+        const uint32_t num_threads_list_[1] = {12};
         const int num_columns_list_[1] = {5};
 
 #else
@@ -165,7 +166,7 @@ namespace terrier {
                 delete sql_tables_[table_index];
             }
             catalog_pointer_->TearDown();
-            delete catalog_pointer_;
+            //delete catalog_pointer_;
             execution::TplClass::ShutdownTplClass();
             delete gc_thread_;
         }
@@ -240,8 +241,6 @@ namespace terrier {
                                     fprintf(stderr, "CPU setting failed...\n");
                                     exit(1);
                                 }
-                                sleep(10);
-                                return;
 
                                 auto *const key_buffer =
                                         common::AllocationUtil::AllocateAligned(default_index->GetProjectedRowInitializer().ProjectedRowSize());
