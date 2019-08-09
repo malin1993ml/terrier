@@ -319,7 +319,7 @@ namespace terrier::execution {
             
             // Parse options
             llvm::cl::HideUnrelatedOptions(kTplOptionsCategory);
-            llvm::cl::ParseCommandLineOptions(argc, argv); // here should be 1, {{"-sql"}}
+            llvm::cl::ParseCommandLineOptions(argc, argv);
 
             // Initialize a signal handler to call SignalHandler()
             struct sigaction sa;
@@ -329,22 +329,22 @@ namespace terrier::execution {
             sigfillset(&sa.sa_mask);
 
             if (sigaction(SIGINT, &sa, nullptr) == -1) {
-                EXECUTION_LOG_ERROR("Cannot handle SIGINT: {}", strerror(errno));
+                EXECUTION_LOG_ERROR("Cannot handle SIGNIT: {}", strerror(errno));
                 return errno;
             }
 
             // Init TPL
-            CpuInfo::Instance();
+            execution::CpuInfo::Instance();
 
-            //terrier::LoggersUtil::Initialize(false);
+            terrier::LoggersUtil::Initialize(false);
 
-            vm::LLVMEngine::Initialize();
+            execution::vm::LLVMEngine::Initialize();
 
-            EXECUTION_LOG_INFO("TPL Bytecode Count: {}", vm::Bytecodes::NumBytecodes());
+            EXECUTION_LOG_INFO("TPL Bytecode Count: {}", execution::vm::Bytecodes::NumBytecodes());
 
             EXECUTION_LOG_INFO("TPL initialized ...");
 
-            EXECUTION_LOG_INFO("\n{}", CpuInfo::Instance()->PrettyPrintInfo());
+            EXECUTION_LOG_INFO("\n{}", terrier::execution::CpuInfo::Instance()->PrettyPrintInfo());
 
             EXECUTION_LOG_INFO("Welcome to TPL (ver. {}.{})", TPL_VERSION_MAJOR, TPL_VERSION_MINOR);
 
