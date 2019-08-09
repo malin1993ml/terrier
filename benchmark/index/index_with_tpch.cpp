@@ -99,7 +99,7 @@ namespace terrier {
 
         std::vector<catalog::col_oid_t> col_oids_;
 
-        tpl::exec::SampleOutput sample_output_;
+        execution::exec::SampleOutput sample_output_;
         catalog::db_oid_t db_oid_;
         catalog::Catalog *catalog_pointer_;
 
@@ -154,7 +154,7 @@ namespace terrier {
             
             catalog_pointer_ = new catalog::Catalog(&txn_manager_, &block_store_);
 
-            tpl::TplClass::InitTplClass(3, (char **)cmd_for_tpch, txn_manager_, block_store_,
+            execution::TplClass::InitTplClass(3, (char **)cmd_for_tpch, txn_manager_, block_store_,
                                         sample_output_, db_oid_, *catalog_pointer_);
         }
 
@@ -164,7 +164,7 @@ namespace terrier {
             }
             catalog_pointer_->TearDown();
             delete catalog_pointer_;
-            tpl::TplClass::ShutdownTplClass();
+            execution::TplClass::ShutdownTplClass();
             delete gc_thread_;
         }
     };
@@ -221,7 +221,7 @@ namespace terrier {
                                 //std::cout << "Out " << worker_id << std::endl;
                                 //return;
 
-                                tpl::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_, catalog_pointer_);
+                                execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_, catalog_pointer_);
                                 while (unfinished) {
                                     my_tpch.RunFile(tpch_filename_[worker_id % tpch_filenum_]);
                                     std::cout << "Turn End " << worker_id << std::endl;

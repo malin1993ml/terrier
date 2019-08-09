@@ -54,7 +54,7 @@ llvm::cl::opt<bool> kIsSQL("sql", llvm::cl::desc("Is the input a SQL query?"), l
 
 tbb::task_scheduler_init scheduler;
 
-namespace tpl {
+namespace terrier::execution {
 
     class TplClass {
     public:
@@ -292,7 +292,7 @@ namespace tpl {
      * Shutdown all TPL subsystems
      */
         static void ShutdownTplClass() {
-            tpl::vm::LLVMEngine::Shutdown();
+            vm::LLVMEngine::Shutdown();
             terrier::LoggersUtil::ShutDown();
             scheduler.terminate();
             LOG_INFO("TPL cleanly shutdown ...");
@@ -330,17 +330,17 @@ namespace tpl {
             }
 
             // Init TPL
-            tpl::CpuInfo::Instance();
+            CpuInfo::Instance();
 
             //terrier::LoggersUtil::Initialize(false);
 
-            tpl::vm::LLVMEngine::Initialize();
+            vm::LLVMEngine::Initialize();
 
-            EXECUTION_LOG_INFO("TPL Bytecode Count: {}", tpl::vm::Bytecodes::NumBytecodes());
+            EXECUTION_LOG_INFO("TPL Bytecode Count: {}", vm::Bytecodes::NumBytecodes());
 
             EXECUTION_LOG_INFO("TPL initialized ...");
 
-            EXECUTION_LOG_INFO("\n{}", tpl::CpuInfo::Instance()->PrettyPrintInfo());
+            EXECUTION_LOG_INFO("\n{}", CpuInfo::Instance()->PrettyPrintInfo());
 
             EXECUTION_LOG_INFO("Welcome to TPL (ver. {}.{})", TPL_VERSION_MAJOR, TPL_VERSION_MINOR);
 
