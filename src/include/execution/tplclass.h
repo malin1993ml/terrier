@@ -1,5 +1,4 @@
 #include <gflags/gflags.h>
-#include <tbb/task_scheduler_init.h>  // NOLINT
 #include <unistd.h>
 #include <algorithm>
 #include <csignal>
@@ -8,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include "tbb/task_scheduler_init.h"
 
 #include "execution/ast/ast_dump.h"
 #include "execution/exec/execution_context.h"
@@ -19,7 +19,7 @@
 #include "execution/sql/memory_pool.h"
 #include "execution/sql/table_generator/sample_output.h"
 #include "execution/sql/table_generator/table_generator.h"
-#include "execution/tpl.h"  // NOLINT
+#include "execution/tpl.h"
 #include "execution/util/cpu_info.h"
 #include "execution/util/timer.h"
 #include "execution/vm/bytecode_generator.h"
@@ -43,14 +43,17 @@
 // CLI options
 // ---------------------------------------------------------
 
-// clang-format off
-llvm::cl::OptionCategory kTplOptionsCategory("TPL Compiler Options", "Options for controlling the TPL compilation process.");  // NOLINT
-llvm::cl::opt<std::string> kInputFile(llvm::cl::Positional, llvm::cl::desc("<input file>"), llvm::cl::init(""), llvm::cl::cat(kTplOptionsCategory));  // NOLINT
-llvm::cl::opt<bool> kPrintAst("print-ast", llvm::cl::desc("Print the programs AST"), llvm::cl::cat(kTplOptionsCategory));  // NOLINT
-llvm::cl::opt<bool> kPrintTbc("print-tbc", llvm::cl::desc("Print the generated TPL Bytecode"), llvm::cl::cat(kTplOptionsCategory));  // NOLINT
-llvm::cl::opt<std::string> kOutputName("output-name", llvm::cl::desc("Print the output name"), llvm::cl::init("schema1"), llvm::cl::cat(kTplOptionsCategory));  // NOLINT
-llvm::cl::opt<bool> kIsSQL("sql", llvm::cl::desc("Is the input a SQL query?"), llvm::cl::cat(kTplOptionsCategory));  // NOLINT
-// clang-format on
+llvm::cl::OptionCategory kTplOptionsCategory("TPL Compiler Options",
+                                             "Options for controlling the TPL compilation process.");
+llvm::cl::opt<std::string> kInputFile(llvm::cl::Positional, llvm::cl::desc("<input file>"), llvm::cl::init(""),
+                                      llvm::cl::cat(kTplOptionsCategory));
+llvm::cl::opt<bool> kPrintAst("print-ast", llvm::cl::desc("Print the programs AST"),
+                              llvm::cl::cat(kTplOptionsCategory));
+llvm::cl::opt<bool> kPrintTbc("print-tbc", llvm::cl::desc("Print the generated TPL Bytecode"),
+                              llvm::cl::cat(kTplOptionsCategory));
+llvm::cl::opt<std::string> kOutputName("output-name", llvm::cl::desc("Print the output name"),
+                                       llvm::cl::init("schema1"), llvm::cl::cat(kTplOptionsCategory));
+llvm::cl::opt<bool> kIsSQL("sql", llvm::cl::desc("Is the input a SQL query?"), llvm::cl::cat(kTplOptionsCategory));
 
 tbb::task_scheduler_init scheduler;
 
@@ -97,7 +100,8 @@ namespace terrier::execution {
             ast::Context context(&region, &error_reporter);
 
             parsing::Scanner scanner(source.data(), source.length());
-            parsing::Parser parser(&scanner, &context);
+            parsing::Rewriter rewriter(&context, exec_ctx.GetAccessor());
+            parsing::Parser parser(&scanner, &context, &rewriter);
 
             double parse_ms = 0.0, typecheck_ms = 0.0, codegen_ms = 0.0, interp_exec_ms = 0.0, adaptive_exec_ms = 0.0,
                     jit_exec_ms = 0.0;
@@ -108,7 +112,7 @@ namespace terrier::execution {
 
             ast::AstNode *root;
             {
-                util::ScopedTimer <std::milli> timer(&parse_ms);
+                util::ScopedTimer<std::milli> timer(&parse_ms);
                 root = parser.Parse();
             }
 
@@ -123,7 +127,7 @@ namespace terrier::execution {
             //
 
             {
-                util::ScopedTimer <std::milli> timer(&typecheck_ms);
+                util::ScopedTimer<std::milli> timer(&typecheck_ms);
                 sema::Sema type_check(&context);
                 type_check.Run(root);
             }
@@ -131,7 +135,7 @@ namespace terrier::execution {
             if (error_reporter.HasErrors()) {
                 EXECUTION_LOG_ERROR("Type-checking error!");
                 error_reporter.PrintErrors();
-                return;
+                throw std::runtime_error("Type Checking Exception!");
             }
 
             // Dump AST
@@ -143,9 +147,9 @@ namespace terrier::execution {
             // TBC generation
             //
 
-            std::unique_ptr <vm::BytecodeModule> bytecode_module;
+            std::unique_ptr<vm::BytecodeModule> bytecode_module;
             {
-                util::ScopedTimer <std::milli> timer(&codegen_ms);
+                util::ScopedTimer<std::milli> timer(&codegen_ms);
                 bytecode_module = vm::BytecodeGenerator::Compile(root, &exec_ctx, name);
             }
 
@@ -161,10 +165,10 @@ namespace terrier::execution {
             //
 
             {
-                util::ScopedTimer <std::milli> timer(&interp_exec_ms);
+                util::ScopedTimer<std::milli> timer(&interp_exec_ms);
 
                 if (kIsSQL) {
-                    std::function < i64(exec::ExecutionContext * ) > main;
+                    std::function<i64(exec::ExecutionContext *)> main;
                     if (!module->GetFunction("main", vm::ExecutionMode::Interpret, &main)) {
                         EXECUTION_LOG_ERROR(
                                 "Missing 'main' entry function with signature "
@@ -175,7 +179,7 @@ namespace terrier::execution {
                     exec_ctx.SetMemoryPool(std::move(memory));
                     EXECUTION_LOG_INFO("VM main() returned: {}", main(&exec_ctx));
                 } else {
-                    std::function < i64() > main;
+                    std::function<i64()> main;
                     if (!module->GetFunction("main", vm::ExecutionMode::Interpret, &main)) {
                         EXECUTION_LOG_ERROR("Missing 'main' entry function with signature ()->int64");
                         return;
@@ -189,10 +193,10 @@ namespace terrier::execution {
             //
 
             {
-                util::ScopedTimer <std::milli> timer(&adaptive_exec_ms);
+                util::ScopedTimer<std::milli> timer(&adaptive_exec_ms);
 
                 if (kIsSQL) {
-                    std::function < i64(exec::ExecutionContext * ) > main;
+                    std::function<i64(exec::ExecutionContext *)> main;
                     if (!module->GetFunction("main", vm::ExecutionMode::Adaptive, &main)) {
                         EXECUTION_LOG_ERROR(
                                 "Missing 'main' entry function with signature "
@@ -203,7 +207,7 @@ namespace terrier::execution {
                     exec_ctx.SetMemoryPool(std::move(memory));
                     EXECUTION_LOG_INFO("ADAPTIVE main() returned: {}", main(&exec_ctx));
                 } else {
-                    std::function < i64() > main;
+                    std::function<i64()> main;
                     if (!module->GetFunction("main", vm::ExecutionMode::Adaptive, &main)) {
                         EXECUTION_LOG_ERROR("Missing 'main' entry function with signature ()->int64");
                         return;
@@ -216,10 +220,10 @@ namespace terrier::execution {
             // JIT
             //
             {
-                util::ScopedTimer <std::milli> timer(&jit_exec_ms);
+                util::ScopedTimer<std::milli> timer(&jit_exec_ms);
 
                 if (kIsSQL) {
-                    std::function < i64(exec::ExecutionContext * ) > main;
+                    std::function<i64(exec::ExecutionContext *)> main;
                     if (!module->GetFunction("main", vm::ExecutionMode::Compiled, &main)) {
                         EXECUTION_LOG_ERROR(
                                 "Missing 'main' entry function with signature "
@@ -230,7 +234,7 @@ namespace terrier::execution {
                     exec_ctx.SetMemoryPool(std::move(memory));
                     EXECUTION_LOG_INFO("JIT main() returned: {}", main(&exec_ctx));
                 } else {
-                    std::function < i64() > main;
+                    std::function<i64()> main;
                     if (!module->GetFunction("main", vm::ExecutionMode::Compiled, &main)) {
                         EXECUTION_LOG_ERROR("Missing 'main' entry function with signature ()->int64");
                         return;
@@ -373,9 +377,9 @@ namespace terrier::execution {
             // TODO(Amadou): Read this in from a directory. That would require boost or experimental C++ though
             sql::TableGenerator table_generator{&exec_ctx, &block_store, ns_oid};
             table_generator.GenerateTestTables();
-            table_generator.GenerateTableFromFile("../sample_tpl/tables/lineitem.schema",
-                                                  "../sample_tpl/tables/lineitem.data");
+            table_generator.GenerateTPCHTables("../sample_tpl/tables/");
             table_generator.GenerateTableFromFile("../sample_tpl/tables/types1.schema", "../sample_tpl/tables/types1.data");
+            // table_generator.GenerateTableFromFile("../sample_tpl/tables/part.schema", "../sample_tpl/tables/part.data");
             txn_manager.Commit(txn, [](void *) {}, nullptr);
 
             return 0;
