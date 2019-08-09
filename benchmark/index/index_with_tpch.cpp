@@ -41,9 +41,11 @@ namespace terrier {
 // this is the maximum num_inserts, num_threads and num_columns
 // for initialization and full experiment
         static const int max_num_columns_ = 5;
-        static const uint32_t max_num_inserts_ = 10000000;//(2 << 27);
+        // static const uint32_t max_num_inserts_ = 10000000;//(2 << 27);
+        static const uint32_t max_num_inserts_ = 10000;
         static const uint32_t total_num_inserts_ = max_num_inserts_ * 2; // 2 times of maximum inserts
-        static const uint32_t max_num_threads_ = 18;
+        //static const uint32_t max_num_threads_ = 18;
+        static const uint32_t max_num_threads_ = 4;
         static const uint32_t num_inserts_per_table_ = max_num_inserts_ / max_num_threads_ + 1;
 
         static const uint32_t tpch_filenum_ = 4;
@@ -67,8 +69,8 @@ namespace terrier {
                                                16777216, 33554432, 67108864, 134217728};
         const uint32_t num_threads_list_[3] = {4, 8, 12};
         const int num_columns_list_[3] = {1, 3, 5};*/
-        const uint32_t num_inserts_list_[1] = {10000000};
-        const uint32_t num_threads_list_[1] = {12};
+        const uint32_t num_inserts_list_[1] = {10000};
+        const uint32_t num_threads_list_[1] = {3};
         const int num_columns_list_[1] = {5};
 
 #else
