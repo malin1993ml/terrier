@@ -64,6 +64,14 @@ class GarbageCollectorThread {
   std::thread gc_thread_;
 
   void GCThreadLoop() {
+      cpu_set_t cpu_set;
+      CPU_ZERO(&cpu_set);
+      CPU_SET(9, &cpu_set);
+      int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set), &cpu_set);
+      if(ret != 0) {
+          fprintf(stderr, "CPU setting failed...\n");
+          exit(1);
+      }
     while (run_gc_) {
       std::this_thread::sleep_for(gc_period_);
       if (!gc_paused_) gc_.PerformGarbageCollection();

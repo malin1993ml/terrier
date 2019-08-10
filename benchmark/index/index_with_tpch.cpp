@@ -1,10 +1,10 @@
 // Whether it is a local test with small numbers
-#define LOCAL_TEST
+//#define LOCAL_TEST
 // Use TPCH as default, do not use more than 1 replacement
 // Whether remove TPCH
 //#define EMPTY_TEST
 // Whether use loop instead of TPCH
-#define LOOP_TEST
+//#define LOOP_TEST
 // Whether use array operation instead of TPCH
 //#define ARRAY_TEST
 // To run full experiment, comment the following line
