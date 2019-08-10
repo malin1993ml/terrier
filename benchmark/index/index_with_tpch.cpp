@@ -1,3 +1,15 @@
+// Whether it is a local test with small numbers
+#define LOCAL_TEST
+// Use TPCH as default, do not use more than 1 replacement
+// Whether remove TPCH
+//#define EMPTY_TEST
+// Whether use loop instead of TPCH
+//#define LOOP_TEST
+// Whether use array operation instead of TPCH
+//#define ARRAY_TEST
+// To run full experiment, comment the following line
+#define PARTIAL_TEST
+
 #include <memory>
 #include <numeric>
 #include <sched.h>
@@ -31,11 +43,6 @@
 
 #include "execution/tplclass.h"
 
-//To run full experiment, comment the following line
-#define PARTIAL_TEST
-// Whether it is a local test with small numbers
-#define LOCAL_TEST
-
 namespace terrier {
 
     class IndexBenchmark : public benchmark::Fixture {
@@ -47,10 +54,13 @@ namespace terrier {
 #ifdef LOCAL_TEST
         static const uint32_t max_num_inserts_ = 10000;
         static const uint32_t max_num_threads_ = 4;
+        static const int big_number_for_array_test_ = 1 << 25;
 #else
         static const uint32_t max_num_inserts_ = 10000000;//(2 << 27);
         static const uint32_t max_num_threads_ = 18;
+        static const int big_number_for_array_test_ = 1 << 28;
 #endif
+
         static const uint32_t total_num_inserts_ = max_num_inserts_ * 2; // 2 times of maximum inserts
         static const uint32_t num_inserts_per_table_ = max_num_inserts_ / max_num_threads_ + 1;
 
@@ -127,8 +137,19 @@ namespace terrier {
         double interp_exec_ms_sum_[max_num_threads_];
         double adaptive_exec_ms_sum_[max_num_threads_];
         double jit_exec_ms_sum_[max_num_threads_];
+#ifdef ARRAY_TEST
+        int array_for_array_test_[max_num_threads_][big_number_for_array_test_];
+#endif
 
         void SetUp(const benchmark::State &state) final {
+#ifdef ARRAY_TEST
+            /*
+            for (uint32_t i = 0; i < max_num_threads_; i++)
+                for (int j = 0; j < big_number_for_array_test_; j++)
+                    array_for_array_test_[i][j] = 1;
+                    */
+            std::memset(array_for_array_test_, (int)sizeof(array_for_array_test_), 1);
+#endif
             key_permutation_.clear();
             key_permutation_.resize(total_num_inserts_);
             for (uint32_t i = 0; i < total_num_inserts_; i++) {
@@ -238,8 +259,14 @@ namespace terrier {
 
                             gc_thread_->GetGarbageCollector().RegisterIndexForGC(default_index);
                             bool unfinished = true;
+#ifdef LOOP_TEST
+                            bool always_false = false;
+#endif
 
                             auto run_my_tpch = [&](uint32_t worker_id, uint32_t core_id) {
+#ifdef EMPTY_TEST
+                                return;
+#endif
                                 // Pin to core
                                 cpu_set_t cpu_set;
                                 CPU_ZERO(&cpu_set);
@@ -252,7 +279,17 @@ namespace terrier {
                                 //while (unfinished) sleep(1);
                                 //std::cout << "Out " << worker_id << std::endl;
                                 //return;
-
+#ifdef LOOP_TEST
+                                for (int x = 12; unfinished; x = x * 3 + 7)
+                                    if (always_false)
+                                        std::cout << x << unfinished << std::endl;
+                                return;
+#endif
+#ifdef ARRAY_TEST
+                                for (int i = 0; unfinished; i = (i + 1) % big_number_for_array_test_)
+                                    array_for_array_test_[worker_id][i] = array_for_array_test_[worker_id][i] * 3 + 7;
+                                return;
+#endif
                                 execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_, catalog_pointer_,
                                                             &interp_exec_ms_[worker_id],
                                                             &adaptive_exec_ms_[worker_id],
@@ -339,6 +376,9 @@ namespace terrier {
                         // keysize threadnum insertnum time(s)
                         std::cout << "bwtree_time" << "\t" << num_columns << "\t" << num_threads << "\t" << num_inserts
                                   << "\t" << (double)sum_time / max_times_ / 1000000.0 << std::endl;
+#ifndef EMPTY_TEST
+#ifndef LOOP_TEST
+#ifndef ARRAY_TEST
                         double interp_exec_ms_sum = 0, adaptive_exec_ms_sum = 0, jit_exec_ms_sum = 0;
                         double interp_exec_ms_cnt = 0, adaptive_exec_ms_cnt = 0, jit_exec_ms_cnt = 0;
                         for (uint32_t i = num_threads; i < max_num_threads_; i++) {
@@ -358,6 +398,9 @@ namespace terrier {
                                                  << "\t" << adaptive_exec_ms_sum / adaptive_exec_ms_cnt
                                                  << "\t" << jit_exec_ms_sum / jit_exec_ms_cnt
                                                  << std::endl;
+#endif
+#endif
+#endif
                     }
         }
     }
