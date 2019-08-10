@@ -280,9 +280,14 @@ namespace terrier {
                                 //std::cout << "Out " << worker_id << std::endl;
                                 //return;
 #ifdef LOOP_TEST
-                                for (int x = 12; unfinished; x = x * 3 + 7)
-                                    if (always_false)
-                                        std::cout << x << unfinished << std::endl;
+                                int x = 1;
+                                while(unfinished) {
+                                    for (int i = 0; i < (1 << 30); i++)
+                                        x = x * 3 + 7;
+                                    sleep(0);
+                                }
+                                if (always_false)
+                                    std::cout << x << std::endl;
                                 return;
 #endif
 #ifdef ARRAY_TEST
@@ -366,15 +371,7 @@ namespace terrier {
                                 bwtree_thread_pool.WaitUntilAllFinished();
                             }
                             unfinished = false;
-#ifdef LOOP_TEST
-                            tpch_thread_pool.Shutdown();
-#else
-#ifdef ARRAY_TEST
-                            tpch_thread_pool.Shutdown();
-#else
                             tpch_thread_pool.WaitUntilAllFinished();
-#endif
-#endif
 
                             gc_thread_->GetGarbageCollector().UnregisterIndexForGC(default_index);
 
