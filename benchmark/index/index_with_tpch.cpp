@@ -1,5 +1,5 @@
 // Whether it is a local test with small numbers
-//#define LOCAL_TEST
+#define LOCAL_TEST
 // Use TPCH as default, do not use more than 1 replacement
 // Whether remove TPCH
 //#define EMPTY_TEST
@@ -298,7 +298,8 @@ namespace terrier {
                                 execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_, catalog_pointer_,
                                                             &interp_exec_ms_[worker_id],
                                                             &adaptive_exec_ms_[worker_id],
-                                                            &jit_exec_ms_[worker_id]);
+                                                            &jit_exec_ms_[worker_id],
+                                                            &unfinished);
                                 // the vectors are cleared outside the time loop
                                 for (uint32_t i = 0; unfinished; i = (i + 1) % tpch_filenum_) {
                                     my_tpch.RunFile(tpch_filename_[i]);

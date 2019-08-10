@@ -70,6 +70,7 @@ namespace terrier::execution {
         terrier::catalog::db_oid_t db_oid_;
         terrier::catalog::Catalog * catalog_pointer_;
         std::vector<double> *interp_exec_ms_pointer_, *adaptive_exec_ms_pointer_, *jit_exec_ms_pointer_;
+        bool *unfinished_;
 
         TplClass(terrier::transaction::TransactionManager * txn_manager_pointer,
                  exec::SampleOutput * sample_output_pointer,
@@ -77,14 +78,16 @@ namespace terrier::execution {
                  terrier::catalog::Catalog * catalog_pointer,
                  std::vector<double> * interp_exec_ms,
                  std::vector<double> * adaptive_exec_ms,
-                 std::vector<double> * jit_exec_ms) :
+                 std::vector<double> * jit_exec_ms,
+                 bool *unfinished) :
                 txn_manager_pointer_(txn_manager_pointer),
                 sample_output_pointer_(sample_output_pointer),
                 db_oid_(db_oid),
                 catalog_pointer_(catalog_pointer),
                 interp_exec_ms_pointer_(interp_exec_ms),
                 adaptive_exec_ms_pointer_(adaptive_exec_ms),
-                jit_exec_ms_pointer_(jit_exec_ms) {}
+                jit_exec_ms_pointer_(jit_exec_ms),
+                unfinished_(unfinished) {}
 
 /**
  * Compile the TPL source in \a source and run it in both interpreted and JIT
@@ -258,9 +261,11 @@ namespace terrier::execution {
                     "Adaptive Exec.: {} ms, Jit+Exec.: {} ms",
                     parse_ms, typecheck_ms, codegen_ms, interp_exec_ms, adaptive_exec_ms, jit_exec_ms);
             txn_manager_pointer_->Commit(txn, [](void *) {}, nullptr);
-            interp_exec_ms_pointer_->push_back(interp_exec_ms);
-            adaptive_exec_ms_pointer_->push_back(adaptive_exec_ms);
-            jit_exec_ms_pointer_->push_back(jit_exec_ms);
+            if (*unfinished_) {
+                interp_exec_ms_pointer_->push_back(interp_exec_ms);
+                adaptive_exec_ms_pointer_->push_back(adaptive_exec_ms);
+                jit_exec_ms_pointer_->push_back(jit_exec_ms);
+            }
         }
 
     /**
