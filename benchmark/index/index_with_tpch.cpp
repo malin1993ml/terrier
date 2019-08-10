@@ -4,7 +4,7 @@
 // Whether remove TPCH
 //#define EMPTY_TEST
 // Whether use loop instead of TPCH
-//#define LOOP_TEST
+#define LOOP_TEST
 // Whether use array operation instead of TPCH
 //#define ARRAY_TEST
 // To run full experiment, comment the following line
@@ -366,7 +366,15 @@ namespace terrier {
                                 bwtree_thread_pool.WaitUntilAllFinished();
                             }
                             unfinished = false;
+#ifdef LOOP_TEST
+                            tpch_thread_pool.Shutdown();
+#else
+#ifdef ARRAY_TEST
+                            tpch_thread_pool.Shutdown();
+#else
                             tpch_thread_pool.WaitUntilAllFinished();
+#endif
+#endif
 
                             gc_thread_->GetGarbageCollector().UnregisterIndexForGC(default_index);
 
