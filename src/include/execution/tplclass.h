@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 #include "tbb/task_scheduler_init.h"
 
 #include "execution/ast/ast_dump.h"
@@ -68,15 +69,22 @@ namespace terrier::execution {
         exec::SampleOutput * sample_output_pointer_;
         terrier::catalog::db_oid_t db_oid_;
         terrier::catalog::Catalog * catalog_pointer_;
+        std::vector<double> *interp_exec_ms_pointer_, *adaptive_exec_ms_pointer_, *jit_exec_ms_pointer_;
 
         TplClass(terrier::transaction::TransactionManager * txn_manager_pointer,
                  exec::SampleOutput * sample_output_pointer,
                  terrier::catalog::db_oid_t db_oid,
-                 terrier::catalog::Catalog * catalog_pointer) :
+                 terrier::catalog::Catalog * catalog_pointer,
+                 std::vector<double> * interp_exec_ms,
+                 std::vector<double> * adaptive_exec_ms,
+                 std::vector<double> * jit_exec_ms) :
                 txn_manager_pointer_(txn_manager_pointer),
                 sample_output_pointer_(sample_output_pointer),
                 db_oid_(db_oid),
-                catalog_pointer_(catalog_pointer) {}
+                catalog_pointer_(catalog_pointer),
+                interp_exec_ms_pointer_(interp_exec_ms),
+                adaptive_exec_ms_pointer_(adaptive_exec_ms),
+                jit_exec_ms_pointer_(jit_exec_ms) {}
 
 /**
  * Compile the TPL source in \a source and run it in both interpreted and JIT
@@ -250,6 +258,9 @@ namespace terrier::execution {
                     "Adaptive Exec.: {} ms, Jit+Exec.: {} ms",
                     parse_ms, typecheck_ms, codegen_ms, interp_exec_ms, adaptive_exec_ms, jit_exec_ms);
             txn_manager_pointer_->Commit(txn, [](void *) {}, nullptr);
+            interp_exec_ms_pointer_->push_back(interp_exec_ms);
+            adaptive_exec_ms_pointer_->push_back(adaptive_exec_ms);
+            jit_exec_ms_pointer_->push_back(jit_exec_ms);
         }
 
     /**

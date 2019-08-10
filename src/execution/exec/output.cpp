@@ -90,6 +90,7 @@ void OutputPrinter::operator()(byte *tuples, u32 num_tuples, u32 tuple_size) {
     ss << std::endl;
   }
   printed_++;
-  std::cout << ss.str() << std::endl;
+    //###########hsy#################
+  //std::cout << ss.str() << std::endl;
 }
 }  // namespace terrier::execution::exec

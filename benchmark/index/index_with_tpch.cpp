@@ -1,6 +1,7 @@
 #include <memory>
-#include <vector>
+#include <numeric>
 #include <sched.h>
+#include <vector>
 
 #include "benchmark/benchmark.h"
 #include "common/scoped_timer.h"
@@ -32,6 +33,8 @@
 
 //To run full experiment, comment the following line
 #define PARTIAL_TEST
+// Whether it is a local test with small numbers
+#define LOCAL_TEST
 
 namespace terrier {
 
@@ -40,12 +43,15 @@ namespace terrier {
     public:
 // this is the maximum num_inserts, num_threads and num_columns
 // for initialization and full experiment
-        static const int max_num_columns_ = 5;
+        static const int max_num_columns_ = 4;
+#ifdef LOCAL_TEST
+        static const uint32_t max_num_inserts_ = 10000;
+        static const uint32_t max_num_threads_ = 4;
+#else
         static const uint32_t max_num_inserts_ = 10000000;//(2 << 27);
-        //static const uint32_t max_num_inserts_ = 10000;
-        static const uint32_t total_num_inserts_ = max_num_inserts_ * 2; // 2 times of maximum inserts
         static const uint32_t max_num_threads_ = 18;
-        //static const uint32_t max_num_threads_ = 4;
+#endif
+        static const uint32_t total_num_inserts_ = max_num_inserts_ * 2; // 2 times of maximum inserts
         static const uint32_t num_inserts_per_table_ = max_num_inserts_ / max_num_threads_ + 1;
 
         static const uint32_t tpch_filenum_ = 4;
@@ -63,21 +69,29 @@ namespace terrier {
         
 #ifdef PARTIAL_TEST
 // if not full experiment, set the list of num_inserts, num_threads and num_columns
-/*
+#ifdef LOCAL_TEST
+        const uint32_t num_inserts_list_[1] = {1000};
+        const uint32_t num_threads_list_[1] = {2};
+        const int num_columns_list_[1] = {4};
+#else
+
+        /*
         const uint32_t num_inserts_list_[21] = {1, 16, 256, 1024, 2048, 4096, 8192, 16384,
                                                32768, 65536, 131072, 262144, 524288,
                                                1048576, 2097152, 4194304, 8388608,
                                                16777216, 33554432, 67108864, 134217728};
         const uint32_t num_threads_list_[3] = {4, 8, 12};
-        const int num_columns_list_[3] = {1, 3, 5};*/
+        const int num_columns_list_[3] = {1, 3, 5};
+         */
         const uint32_t num_inserts_list_[1] = {10000000};
-        const uint32_t num_threads_list_[1] = {12};
-        const int num_columns_list_[1] = {5};
+        const uint32_t num_threads_list_[18] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18};
+        const int num_columns_list_[1] = {4};
+#endif
 
 #else
         // if run full experiment, set num_inserts_list_ only
-// num_threads will range from 1 to max_num_threads_
-// num_columns will range from 1 to max_num_columns_
+        // num_threads will range from 1 to max_num_threads_
+        // num_columns will range from 1 to max_num_columns_
         const uint32_t num_inserts_list_[9] = {100000,    300000,    500000,    700000,
                                                1000000,   3000000,   5000000,   7000000,
                                                10000000};
@@ -105,6 +119,14 @@ namespace terrier {
         execution::exec::SampleOutput sample_output_;
         catalog::db_oid_t db_oid_;
         catalog::Catalog *catalog_pointer_;
+
+        std::vector<double> interp_exec_ms_[max_num_threads_];
+        std::vector<double> adaptive_exec_ms_[max_num_threads_];
+        std::vector<double> jit_exec_ms_[max_num_threads_];
+
+        double interp_exec_ms_sum_[max_num_threads_];
+        double adaptive_exec_ms_sum_[max_num_threads_];
+        double jit_exec_ms_sum_[max_num_threads_];
 
         void SetUp(const benchmark::State &state) final {
             key_permutation_.clear();
@@ -185,6 +207,13 @@ namespace terrier {
                     for (uint32_t num_threads = 1; num_threads <= max_num_threads_; num_threads++) {
 #endif
                         uint64_t sum_time = 0;
+
+                        for (uint32_t i = num_threads; i < max_num_threads_; i++) {
+                            interp_exec_ms_[i].clear();
+                            adaptive_exec_ms_[i].clear();
+                            jit_exec_ms_[i].clear();
+                        }
+
                         for (int times = 1; times <= max_times_; times++) {
                             catalog::IndexSchema default_schema_;
                             std::vector<catalog::IndexSchema::Column> keycols;
@@ -224,10 +253,13 @@ namespace terrier {
                                 //std::cout << "Out " << worker_id << std::endl;
                                 //return;
 
-                                execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_, catalog_pointer_);
-                                while (unfinished) {
-                                    my_tpch.RunFile(tpch_filename_[worker_id % tpch_filenum_]);
-                                    std::cout << "Turn End " << worker_id << std::endl;
+                                execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_, catalog_pointer_,
+                                                            &interp_exec_ms_[worker_id],
+                                                            &adaptive_exec_ms_[worker_id],
+                                                            &jit_exec_ms_[worker_id]);
+                                // the vectors are cleared outside the time loop
+                                for (uint32_t i = 0; unfinished; i = (i + 1) % tpch_filenum_) {
+                                    my_tpch.RunFile(tpch_filename_[i]);
                                 }
                             };
 
@@ -297,7 +329,6 @@ namespace terrier {
                                 bwtree_thread_pool.WaitUntilAllFinished();
                             }
                             unfinished = false;
-                            std::cout << "Finished" << std::endl;
                             tpch_thread_pool.WaitUntilAllFinished();
 
                             gc_thread_->GetGarbageCollector().UnregisterIndexForGC(default_index);
@@ -305,8 +336,28 @@ namespace terrier {
                             delete default_index;
                             sum_time += elapsed_us;
                         }
-                        std::cout << num_columns << "\t" << num_threads << "\t" << num_inserts
+                        // keysize threadnum insertnum time(s)
+                        std::cout << "bwtree_time" << "\t" << num_columns << "\t" << num_threads << "\t" << num_inserts
                                   << "\t" << (double)sum_time / max_times_ / 1000000.0 << std::endl;
+                        double interp_exec_ms_sum = 0, adaptive_exec_ms_sum = 0, jit_exec_ms_sum = 0;
+                        double interp_exec_ms_cnt = 0, adaptive_exec_ms_cnt = 0, jit_exec_ms_cnt = 0;
+                        for (uint32_t i = num_threads; i < max_num_threads_; i++) {
+                            interp_exec_ms_sum_[i] = std::accumulate(std::begin(interp_exec_ms_[i]), std::end(interp_exec_ms_[i]), 0.0);
+                            interp_exec_ms_sum += interp_exec_ms_sum_[i];
+                            interp_exec_ms_cnt += (double)interp_exec_ms_[i].size();
+                            adaptive_exec_ms_sum_[i] = std::accumulate(std::begin(adaptive_exec_ms_[i]), std::end(adaptive_exec_ms_[i]), 0.0);
+                            adaptive_exec_ms_sum += adaptive_exec_ms_sum_[i];
+                            adaptive_exec_ms_cnt += (double)adaptive_exec_ms_[i].size();
+                            jit_exec_ms_sum_[i] = std::accumulate(std::begin(jit_exec_ms_[i]), std::end(jit_exec_ms_[i]), 0.0);
+                            jit_exec_ms_sum += jit_exec_ms_sum_[i];
+                            jit_exec_ms_cnt += (double)jit_exec_ms_[i].size();
+                        }
+                        // keysize threadnum insertnum interp_time adaptive_time jit_time(ms)
+                        std::cout << "exec_time" << "\t" << num_columns << "\t" << num_threads << "\t" << num_inserts
+                                                 << "\t" << interp_exec_ms_sum / interp_exec_ms_cnt
+                                                 << "\t" << adaptive_exec_ms_sum / adaptive_exec_ms_cnt
+                                                 << "\t" << jit_exec_ms_sum / jit_exec_ms_cnt
+                                                 << std::endl;
                     }
         }
     }
