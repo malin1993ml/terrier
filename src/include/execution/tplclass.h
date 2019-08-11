@@ -76,17 +76,11 @@ namespace terrier::execution {
                  exec::SampleOutput * sample_output_pointer,
                  terrier::catalog::db_oid_t db_oid,
                  terrier::catalog::Catalog * catalog_pointer,
-                 std::vector<double> * interp_exec_ms,
-                 std::vector<double> * adaptive_exec_ms,
-                 std::vector<double> * jit_exec_ms,
                  bool *unfinished) :
                 txn_manager_pointer_(txn_manager_pointer),
                 sample_output_pointer_(sample_output_pointer),
                 db_oid_(db_oid),
                 catalog_pointer_(catalog_pointer),
-                interp_exec_ms_pointer_(interp_exec_ms),
-                adaptive_exec_ms_pointer_(adaptive_exec_ms),
-                jit_exec_ms_pointer_(jit_exec_ms),
                 unfinished_(unfinished) {}
 
 /**
@@ -199,7 +193,7 @@ namespace terrier::execution {
                     EXECUTION_LOG_INFO("VM main() returned: {}", main());
                 }
             }
-
+/*
             //
             // Adaptive
             //
@@ -227,7 +221,7 @@ namespace terrier::execution {
                     EXECUTION_LOG_INFO("ADAPTIVE main() returned: {}", main());
                 }
             }
-
+*/
             //
             // JIT
             //
@@ -295,7 +289,9 @@ namespace terrier::execution {
      * Compile and run the TPL program in the given filename
      * @param filename The name of the file on disk to compile
      */
-        void RunFile(const std::string &filename) {
+        void RunFile(const std::string &filename, std::vector<double> *interp_exec_ms_pointer,
+                                                  std::vector<double> *adaptive_exec_ms_pointer,
+                                                  std::vector<double> *jit_exec_ms_pointer) {
             auto file = llvm::MemoryBuffer::getFile(filename);
             if (std::error_code error = file.getError()) {
                 EXECUTION_LOG_ERROR("There was an error reading file '{}': {}", filename, error.message());
@@ -303,6 +299,9 @@ namespace terrier::execution {
             }
 
             EXECUTION_LOG_INFO("Compiling and running file: {}", filename);
+            interp_exec_ms_pointer_ = interp_exec_ms_pointer;
+            adaptive_exec_ms_pointer_ = adaptive_exec_ms_pointer;
+            jit_exec_ms_pointer_ = jit_exec_ms_pointer;
 
             // Copy the source into a temporary, compile, and run
             CompileAndRun((*file)->getBuffer().str());

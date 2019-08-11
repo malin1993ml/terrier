@@ -130,13 +130,13 @@ namespace terrier {
         catalog::db_oid_t db_oid_;
         catalog::Catalog *catalog_pointer_;
 
-        std::vector<double> interp_exec_ms_[max_num_threads_];
-        std::vector<double> adaptive_exec_ms_[max_num_threads_];
-        std::vector<double> jit_exec_ms_[max_num_threads_];
+        std::vector<double> interp_exec_ms_[max_num_threads_][tpch_filenum_];
+        std::vector<double> adaptive_exec_ms_[max_num_threads_][tpch_filenum_];
+        std::vector<double> jit_exec_ms_[max_num_threads_][tpch_filenum_];
 
-        double interp_exec_ms_sum_[max_num_threads_];
-        double adaptive_exec_ms_sum_[max_num_threads_];
-        double jit_exec_ms_sum_[max_num_threads_];
+        double interp_exec_ms_sum_[max_num_threads_][tpch_filenum_];
+        double adaptive_exec_ms_sum_[max_num_threads_][tpch_filenum_];
+        double jit_exec_ms_sum_[max_num_threads_][tpch_filenum_];
 #ifdef ARRAY_TEST
         int array_for_array_test_[max_num_threads_][big_number_for_array_test_];
 #endif
@@ -229,11 +229,12 @@ namespace terrier {
 #endif
                         uint64_t sum_time = 0;
 
-                        for (uint32_t i = num_threads; i < max_num_threads_; i++) {
-                            interp_exec_ms_[i].clear();
-                            adaptive_exec_ms_[i].clear();
-                            jit_exec_ms_[i].clear();
-                        }
+                        for (uint32_t i = num_threads; i < max_num_threads_; i++)
+                            for (uint32_t j = 0; j < tpch_filenum_; j++) {
+                                interp_exec_ms_[i][j].clear();
+                                adaptive_exec_ms_[i][j].clear();
+                                jit_exec_ms_[i][j].clear();
+                            }
 
                         for (int times = 1; times <= max_times_; times++) {
                             catalog::IndexSchema default_schema_;
@@ -296,13 +297,12 @@ namespace terrier {
                                 return;
 #endif
                                 execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_, catalog_pointer_,
-                                                            &interp_exec_ms_[worker_id],
-                                                            &adaptive_exec_ms_[worker_id],
-                                                            &jit_exec_ms_[worker_id],
                                                             &unfinished);
                                 // the vectors are cleared outside the time loop
-                                for (uint32_t i = 0; unfinished; i = (i + 1) % tpch_filenum_) {
-                                    my_tpch.RunFile(tpch_filename_[i]);
+                                for (uint32_t i = worker_id % tpch_filenum_; unfinished; i = (i + 1) % tpch_filenum_) {
+                                    my_tpch.RunFile(tpch_filename_[i], &interp_exec_ms_[worker_id][i],
+                                                                                &adaptive_exec_ms_[worker_id][i],
+                                                                                &jit_exec_ms_[worker_id][i]);
                                 }
                             };
 
@@ -385,25 +385,29 @@ namespace terrier {
 #ifndef EMPTY_TEST
 #ifndef LOOP_TEST
 #ifndef ARRAY_TEST
-                        double interp_exec_ms_sum = 0, adaptive_exec_ms_sum = 0, jit_exec_ms_sum = 0;
-                        double interp_exec_ms_cnt = 0, adaptive_exec_ms_cnt = 0, jit_exec_ms_cnt = 0;
-                        for (uint32_t i = num_threads; i < max_num_threads_; i++) {
-                            interp_exec_ms_sum_[i] = std::accumulate(std::begin(interp_exec_ms_[i]), std::end(interp_exec_ms_[i]), 0.0);
-                            interp_exec_ms_sum += interp_exec_ms_sum_[i];
-                            interp_exec_ms_cnt += (double)interp_exec_ms_[i].size();
-                            adaptive_exec_ms_sum_[i] = std::accumulate(std::begin(adaptive_exec_ms_[i]), std::end(adaptive_exec_ms_[i]), 0.0);
-                            adaptive_exec_ms_sum += adaptive_exec_ms_sum_[i];
-                            adaptive_exec_ms_cnt += (double)adaptive_exec_ms_[i].size();
-                            jit_exec_ms_sum_[i] = std::accumulate(std::begin(jit_exec_ms_[i]), std::end(jit_exec_ms_[i]), 0.0);
-                            jit_exec_ms_sum += jit_exec_ms_sum_[i];
-                            jit_exec_ms_cnt += (double)jit_exec_ms_[i].size();
-                        }
+                        double interp_exec_ms_sum[tpch_filenum_] = {0}, adaptive_exec_ms_sum[tpch_filenum_] = {0}, jit_exec_ms_sum[tpch_filenum_] = {0};
+                        double interp_exec_ms_cnt[tpch_filenum_] = {0}, adaptive_exec_ms_cnt[tpch_filenum_] = {0}, jit_exec_ms_cnt[tpch_filenum_] = {0};
+                        for (uint32_t i = num_threads; i < max_num_threads_; i++)
+                            for (uint32_t j = 0; j < tpch_filenum_; j++) {
+                                interp_exec_ms_sum_[i][j] = std::accumulate(std::begin(interp_exec_ms_[i][j]), std::end(interp_exec_ms_[i][j]), 0.0);
+                                interp_exec_ms_sum[j] += interp_exec_ms_sum_[i][j];
+                                interp_exec_ms_cnt[j] += (double)interp_exec_ms_[i][j].size();
+                                adaptive_exec_ms_sum_[i][j] = std::accumulate(std::begin(adaptive_exec_ms_[i][j]), std::end(adaptive_exec_ms_[i][j]), 0.0);
+                                adaptive_exec_ms_sum[j] += adaptive_exec_ms_sum_[i][j];
+                                adaptive_exec_ms_cnt[j] += (double)adaptive_exec_ms_[i][j].size();
+                                jit_exec_ms_sum_[i][j] = std::accumulate(std::begin(jit_exec_ms_[i][j]), std::end(jit_exec_ms_[i][j]), 0.0);
+                                jit_exec_ms_sum[j] += jit_exec_ms_sum_[i][j];
+                                jit_exec_ms_cnt[j] += (double)jit_exec_ms_[i][j].size();
+                            }
                         // keysize threadnum insertnum interp_time adaptive_time jit_time(ms)
-                        std::cout << "exec_time" << "\t" << num_columns << "\t" << num_threads << "\t" << num_inserts
-                                                 << "\t" << interp_exec_ms_sum / interp_exec_ms_cnt
-                                                 << "\t" << adaptive_exec_ms_sum / adaptive_exec_ms_cnt
-                                                 << "\t" << jit_exec_ms_sum / jit_exec_ms_cnt
-                                                 << std::endl;
+                        for (uint32_t j = 0; j < tpch_filenum_; j++) {
+                            std::cout << tpch_filename_[j] << "\t" << num_columns << "\t" << num_threads << "\t"
+                                      << num_inserts
+                                      << "\t" << interp_exec_ms_sum[j] / interp_exec_ms_cnt[j]
+                                      << "\t" << adaptive_exec_ms_sum[j] / adaptive_exec_ms_cnt[j]
+                                      << "\t" << jit_exec_ms_sum[j] / jit_exec_ms_cnt[j]
+                                      << std::endl;
+                        }
 #endif
 #endif
 #endif
