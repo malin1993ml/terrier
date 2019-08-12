@@ -9,6 +9,8 @@
 //#define ARRAY_TEST
 // Whether pin to core
 //#define MY_PIN_TO_CORE
+// Whether to scan whole table; otherwise scan 1M at a time
+//#define SCAN_ALL
 // To run full experiment, comment the following line
 #define PARTIAL_TEST
 
@@ -78,6 +80,7 @@ namespace terrier {
         const char * cmd2 = "-sql";
         const char * cmd3 = "../sample_tpl/tpch/q1.tpl";
         const char * cmd_for_tpch[3] = {cmd0, cmd2, cmd3};
+        const int scan_size_kb_ = 1000;
         
 #ifdef PARTIAL_TEST
 // if not full experiment, set the list of num_inserts, num_threads and num_columns
@@ -346,7 +349,12 @@ namespace terrier {
                                     col_oids_for_use.clear();
                                     for (int i = 0; i < num_columns; i++)
                                         col_oids_for_use.push_back(col_oids_[i]);
-                                    storage::ProjectedColumnsInitializer initializer = sql_table->InitializerForProjectedColumns(col_oids_for_use, (uint32_t)num_to_insert).first;
+#ifdef SCAN_ALL
+                                    int num_to_scan = num_to_insert;
+#else
+                                    int num_to_scan = scan_size_kb_ / num_columns / 8;
+#endif
+                                    storage::ProjectedColumnsInitializer initializer = sql_table->InitializerForProjectedColumns(col_oids_for_use, (uint32_t)num_to_scan).first;
                                     auto *buffer = common::AllocationUtil::AllocateAligned(initializer.ProjectedColumnsSize());
                                     storage::ProjectedColumns *columns = initializer.Initialize(buffer);
                                     do {
