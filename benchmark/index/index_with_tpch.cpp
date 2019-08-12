@@ -1,5 +1,5 @@
 // Whether it is a local test with small numbers
-//#define LOCAL_TEST
+#define LOCAL_TEST
 // Use TPCH as default, do not use more than 1 replacement
 // Whether remove TPCH
 #define EMPTY_TEST
@@ -8,7 +8,7 @@
 // Whether use array operation instead of TPCH
 //#define ARRAY_TEST
 // Whether pin to core
-#define MY_PIN_TO_CORE
+//#define MY_PIN_TO_CORE
 // To run full experiment, comment the following line
 #define PARTIAL_TEST
 
@@ -58,7 +58,7 @@ namespace terrier {
         static const uint32_t max_num_threads_ = 4;
         static const int big_number_for_array_test_ = 1 << 25;
 #else
-        static const uint32_t max_num_inserts_ = 50000000;//(2 << 27);
+        static const uint32_t max_num_inserts_ = 10000000;//(2 << 27);
         static const uint32_t max_num_threads_ = 18;
         static const int big_number_for_array_test_ = 1 << 28;
 #endif
@@ -84,7 +84,7 @@ namespace terrier {
 #ifdef LOCAL_TEST
         const uint32_t num_inserts_list_[1] = {1000};
         const uint32_t num_threads_list_[1] = {2};
-        const int num_columns_list_[1] = {4};
+        const int num_columns_list_[1] = {3};
 #else
 
         /*
@@ -95,8 +95,8 @@ namespace terrier {
         const uint32_t num_threads_list_[3] = {4, 8, 12};
         const int num_columns_list_[3] = {1, 3, 5};
          */
-        const uint32_t num_inserts_list_[1] = {50000000};
-        const uint32_t num_threads_list_[8] = {11,12,13,14,15,16,17,18};
+        const uint32_t num_inserts_list_[1] = {10000000};
+        const uint32_t num_threads_list_[18] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18};
         const int num_columns_list_[1] = {3};
 #endif
 
@@ -229,7 +229,9 @@ namespace terrier {
                 for (int num_columns = 1; num_columns <= max_num_columns_; num_columns++)
                     for (uint32_t num_threads = 1; num_threads <= max_num_threads_; num_threads++) {
 #endif
-                        uint64_t sum_time = 0;
+                        double sum_time = 0;
+                        double sum_insert_time = 0;
+                        double insert_time_ms_[max_num_threads_];
 
                         for (uint32_t i = num_threads; i < max_num_threads_; i++)
                             for (uint32_t j = 0; j < tpch_filenum_; j++) {
@@ -322,6 +324,7 @@ namespace terrier {
                                     exit(1);
                                 }
 #endif
+                                double thread_run_time_ms = 0;
                                 auto *const key_buffer =
                                         common::AllocationUtil::AllocateAligned(default_index->GetProjectedRowInitializer().ProjectedRowSize());
                                 auto *const insert_key = default_index->GetProjectedRowInitializer().InitializeRow(key_buffer);
@@ -338,26 +341,37 @@ namespace terrier {
                                         num_to_insert = (int)num_inserts_per_table_;
                                     int num_inserted = 0;
                                     auto it = sql_table->begin();
+
+                                    std::vector<catalog::col_oid_t> col_oids_for_use;
+                                    col_oids_for_use.clear();
+                                    for (int i = 0; i < num_columns; i++)
+                                        col_oids_for_use.push_back(col_oids_[i]);
+                                    storage::ProjectedColumnsInitializer initializer = sql_table->InitializerForProjectedColumns(col_oids_for_use, (uint32_t)num_to_insert).first;
+                                    auto *buffer = common::AllocationUtil::AllocateAligned(initializer.ProjectedColumnsSize());
+                                    storage::ProjectedColumns *columns = initializer.Initialize(buffer);
                                     do {
-                                        storage::ProjectedColumnsInitializer initializer = sql_table->InitializerForProjectedColumns(col_oids_, (uint32_t)num_to_insert).first;
-                                        auto *buffer = common::AllocationUtil::AllocateAligned(initializer.ProjectedColumnsSize());
-                                        storage::ProjectedColumns *columns = initializer.Initialize(buffer);
                                         sql_table->Scan(txn, &it, columns);
                                         uint32_t num_read = columns->NumTuples();
-                                        for (uint32_t i = 0; i < num_read; i++) {
-                                            storage::ProjectedColumns::RowView stored = columns->InterpretAsRow(i);
-                                            for (uint16_t j = 0; j < (uint16_t)num_columns; j++)
-                                                *reinterpret_cast<int64_t *>(insert_key->AccessForceNotNull(j)) =
-                                                        *reinterpret_cast<int64_t *>(stored.AccessForceNotNull(j));
-                                            default_index->Insert(txn, *insert_key, columns->TupleSlots()[i]);
-                                            ++num_inserted;
-                                            if (num_inserted >= num_to_insert)
-                                                break;
+                                        double run_time_ms = 0;
+                                        {
+                                            execution::util::ScopedTimer<std::milli> timer(&run_time_ms);
+                                            for (uint32_t i = 0; i < num_read; i++) {
+                                                storage::ProjectedColumns::RowView stored = columns->InterpretAsRow(i);
+                                                for (uint16_t j = 0; j < (uint16_t) num_columns; j++)
+                                                    *reinterpret_cast<int64_t *>(insert_key->AccessForceNotNull(j)) =
+                                                            *reinterpret_cast<int64_t *>(stored.AccessForceNotNull(j));
+                                                default_index->Insert(txn, *insert_key, columns->TupleSlots()[i]);
+                                                ++num_inserted;
+                                                if (num_inserted >= num_to_insert)
+                                                    break;
+                                            }
                                         }
-                                        delete[] buffer;
+                                        thread_run_time_ms += run_time_ms;
                                     } while (num_inserted < num_to_insert && it != sql_table->end());
+                                    delete[] buffer;
                                 }
                                 txn_manager_.Commit(txn, transaction::TransactionUtil::EmptyCallback, nullptr);
+                                insert_time_ms_[worker_id] = thread_run_time_ms;
 
                                 delete[] key_buffer;
                             };
@@ -366,9 +380,9 @@ namespace terrier {
                                 tpch_thread_pool.SubmitTask([i, &run_my_tpch] { run_my_tpch(i, core_ids_[i]); });
                             }
 
-                            uint64_t elapsed_us;
+                            double elapsed_ms;
                             {
-                                common::ScopedTimer<std::chrono::microseconds> timer(&elapsed_us);
+                                execution::util::ScopedTimer<std::milli> timer(&elapsed_ms);
 
                                 // run the workload
                                 for (uint32_t i = 0; i < num_threads; i++) {
@@ -382,11 +396,17 @@ namespace terrier {
                             gc_thread_->GetGarbageCollector().UnregisterIndexForGC(default_index);
 
                             delete default_index;
-                            sum_time += elapsed_us;
+                            sum_time += elapsed_ms;
+                            double max_insert_time = 0;
+                            for (uint32_t i = 0; i < num_threads; i++)
+                                if (insert_time_ms_[i] > max_insert_time)
+                                    max_insert_time = insert_time_ms_[i];
+                            sum_insert_time += max_insert_time;
                         }
                         // keysize threadnum insertnum time(s)
                         std::cout << "bwtree_time" << "\t" << num_columns << "\t" << num_threads << "\t" << num_inserts
-                                  << "\t" << (double)sum_time / max_times_ / 1000000.0 << std::endl;
+                                  << "\t" << sum_time / max_times_ / 1000.0
+                                  << "\t" << sum_insert_time / max_times_ / 1000.0 << std::endl;
 #ifndef EMPTY_TEST
 #ifndef LOOP_TEST
 #ifndef ARRAY_TEST
