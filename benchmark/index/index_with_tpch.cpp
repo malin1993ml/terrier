@@ -1,12 +1,14 @@
 // Whether it is a local test with small numbers
-#define LOCAL_TEST
+//#define LOCAL_TEST
 // Use TPCH as default, do not use more than 1 replacement
 // Whether remove TPCH
-//#define EMPTY_TEST
+#define EMPTY_TEST
 // Whether use loop instead of TPCH
 //#define LOOP_TEST
 // Whether use array operation instead of TPCH
 //#define ARRAY_TEST
+// Whether pin to core
+#define MY_PIN_TO_CORE
 // To run full experiment, comment the following line
 #define PARTIAL_TEST
 
@@ -50,13 +52,13 @@ namespace terrier {
     public:
 // this is the maximum num_inserts, num_threads and num_columns
 // for initialization and full experiment
-        static const int max_num_columns_ = 4;
+        static const int max_num_columns_ = 3;
 #ifdef LOCAL_TEST
         static const uint32_t max_num_inserts_ = 10000;
         static const uint32_t max_num_threads_ = 4;
         static const int big_number_for_array_test_ = 1 << 25;
 #else
-        static const uint32_t max_num_inserts_ = 10000000;//(2 << 27);
+        static const uint32_t max_num_inserts_ = 50000000;//(2 << 27);
         static const uint32_t max_num_threads_ = 18;
         static const int big_number_for_array_test_ = 1 << 28;
 #endif
@@ -93,9 +95,9 @@ namespace terrier {
         const uint32_t num_threads_list_[3] = {4, 8, 12};
         const int num_columns_list_[3] = {1, 3, 5};
          */
-        const uint32_t num_inserts_list_[1] = {10000000};
-        const uint32_t num_threads_list_[18] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18};
-        const int num_columns_list_[1] = {4};
+        const uint32_t num_inserts_list_[1] = {50000000};
+        const uint32_t num_threads_list_[8] = {11,12,13,14,15,16,17,18};
+        const int num_columns_list_[1] = {3};
 #endif
 
 #else
@@ -268,6 +270,7 @@ namespace terrier {
 #ifdef EMPTY_TEST
                                 return;
 #endif
+#ifdef MY_PIN_TO_CORE
                                 // Pin to core
                                 cpu_set_t cpu_set;
                                 CPU_ZERO(&cpu_set);
@@ -277,6 +280,7 @@ namespace terrier {
                                     fprintf(stderr, "CPU setting failed...\n");
                                     exit(1);
                                 }
+#endif
                                 //while (unfinished) sleep(1);
                                 //std::cout << "Out " << worker_id << std::endl;
                                 //return;
@@ -307,6 +311,7 @@ namespace terrier {
                             };
 
                             auto workload = [&](uint32_t worker_id, uint32_t core_id) {
+#ifdef MY_PIN_TO_CORE
                                 // Pin to core
                                 cpu_set_t cpu_set;
                                 CPU_ZERO(&cpu_set);
@@ -316,7 +321,7 @@ namespace terrier {
                                     fprintf(stderr, "CPU setting failed...\n");
                                     exit(1);
                                 }
-
+#endif
                                 auto *const key_buffer =
                                         common::AllocationUtil::AllocateAligned(default_index->GetProjectedRowInitializer().ProjectedRowSize());
                                 auto *const insert_key = default_index->GetProjectedRowInitializer().InitializeRow(key_buffer);
