@@ -2,7 +2,7 @@
 #define LOCAL_TEST
 // Use TPCH as default, do not use more than 1 replacement
 // Whether remove TPCH
-#define EMPTY_TEST
+//#define EMPTY_TEST
 // Whether use loop instead of TPCH
 //#define LOOP_TEST
 // Whether use array operation instead of TPCH
@@ -56,7 +56,7 @@ namespace terrier {
 // for initialization and full experiment
         static const int max_num_columns_ = 3;
 #ifdef LOCAL_TEST
-        static const uint32_t max_num_inserts_ = 10000;
+        static const uint32_t max_num_inserts_ = 10000000;
         static const uint32_t max_num_threads_ = 4;
         static const int big_number_for_array_test_ = 1 << 25;
 #else
@@ -85,7 +85,7 @@ namespace terrier {
 #ifdef PARTIAL_TEST
 // if not full experiment, set the list of num_inserts, num_threads and num_columns
 #ifdef LOCAL_TEST
-        const uint32_t num_inserts_list_[1] = {1000};
+        const uint32_t num_inserts_list_[1] = {10000000};
         const uint32_t num_threads_list_[1] = {2};
         const int num_columns_list_[1] = {3};
 #else
