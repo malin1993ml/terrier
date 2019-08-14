@@ -6,7 +6,9 @@
 // Whether use loop instead of TPCH
 //#define LOOP_TEST
 // Whether use array operation instead of TPCH
-//#define ARRAY_TEST
+#define ARRAY_TEST
+// Whether use 10M array in total
+#define ARRAY10M
 // Whether pin to core
 //#define MY_PIN_TO_CORE
 // Whether to scan whole table; otherwise scan 1M at a time
@@ -58,11 +60,18 @@ namespace terrier {
 #ifdef LOCAL_TEST
         static const uint32_t max_num_inserts_ = 10000000;
         static const uint32_t max_num_threads_ = 4;
+#else
+        static const uint32_t max_num_inserts_ = 50000000;//(2 << 27);
+        static const uint32_t max_num_threads_ = 18;
+#endif
+#ifdef ARRAY10M
+        static const int big_number_for_array_test_ = 10000000;
+#else
+#ifdef LOCAL_TEST
         static const int big_number_for_array_test_ = 1 << 25;
 #else
-        static const uint32_t max_num_inserts_ = 10000000;//(2 << 27);
-        static const uint32_t max_num_threads_ = 18;
         static const int big_number_for_array_test_ = 1 << 28;
+#endif
 #endif
 
         static const uint32_t total_num_inserts_ = max_num_inserts_ * 2; // 2 times of maximum inserts
@@ -98,7 +107,7 @@ namespace terrier {
         const uint32_t num_threads_list_[3] = {4, 8, 12};
         const int num_columns_list_[3] = {1, 3, 5};
          */
-        const uint32_t num_inserts_list_[1] = {10000000};
+        const uint32_t num_inserts_list_[1] = {50000000};
         const uint32_t num_threads_list_[18] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18};
         const int num_columns_list_[1] = {3};
 #endif
@@ -301,8 +310,16 @@ namespace terrier {
                                 return;
 #endif
 #ifdef ARRAY_TEST
-                                for (int i = 0; unfinished; i = (i + 1) % big_number_for_array_test_)
-                                    array_for_array_test_[worker_id][i] = array_for_array_test_[worker_id][i] * 3 + 7;
+                                while(unfinished) {
+#ifdef ARRAY10M
+                                    for (int i = 0; unfinished; i = (i + 1) % (big_number_for_array_test_ /
+                                                                               (max_num_threads_ - num_threads)))
+#else
+                                    for (int i = 0; unfinished; i = (i + 1) % big_number_for_array_test_)
+#endif
+                                        array_for_array_test_[worker_id][i] = array_for_array_test_[worker_id][i] * 3 + 7;
+                                    sleep(0);
+                                }
                                 return;
 #endif
                                 execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_, catalog_pointer_,
