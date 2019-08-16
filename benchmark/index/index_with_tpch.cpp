@@ -6,11 +6,13 @@
 // Whether use loop instead of TPCH
 //#define LOOP_TEST
 // Whether use array operation instead of TPCH
-#define ARRAY_TEST
+//#define ARRAY_TEST
 // Whether use 10M array in total
-#define ARRAY10M
+//#define ARRAY10M
 // Whether pin to core
 //#define MY_PIN_TO_CORE
+// Whether to use perf which needs getchar before main body
+//#define USE_PERF
 // Whether to scan whole table; otherwise scan 1M at a time
 //#define SCAN_ALL
 // To run full experiment, comment the following line
@@ -90,12 +92,14 @@ namespace terrier {
         const char * cmd3 = "../sample_tpl/tpch/q1.tpl";
         const char * cmd_for_tpch[3] = {cmd0, cmd2, cmd3};
         const int scan_size_kb_ = 1000;
+
+        const uint32_t filenum_list_[1] = {0};
         
 #ifdef PARTIAL_TEST
 // if not full experiment, set the list of num_inserts, num_threads and num_columns
 #ifdef LOCAL_TEST
         const uint32_t num_inserts_list_[1] = {10000000};
-        const uint32_t num_threads_list_[1] = {2};
+        const uint32_t num_threads_list_[1] = {3};
         const int num_columns_list_[1] = {3};
 #else
 
@@ -144,13 +148,13 @@ namespace terrier {
         catalog::db_oid_t db_oid_;
         catalog::Catalog *catalog_pointer_;
 
-        std::vector<double> interp_exec_ms_[max_num_threads_][tpch_filenum_];
-        std::vector<double> adaptive_exec_ms_[max_num_threads_][tpch_filenum_];
-        std::vector<double> jit_exec_ms_[max_num_threads_][tpch_filenum_];
+        std::vector<double> interp_exec_ms_[max_num_threads_];
+        std::vector<double> adaptive_exec_ms_[max_num_threads_];
+        std::vector<double> jit_exec_ms_[max_num_threads_];
 
-        double interp_exec_ms_sum_[max_num_threads_][tpch_filenum_];
-        double adaptive_exec_ms_sum_[max_num_threads_][tpch_filenum_];
-        double jit_exec_ms_sum_[max_num_threads_][tpch_filenum_];
+        double interp_exec_ms_sum_[max_num_threads_];
+        double adaptive_exec_ms_sum_[max_num_threads_];
+        double jit_exec_ms_sum_[max_num_threads_];
 #ifdef ARRAY_TEST
         int array_for_array_test_[max_num_threads_][big_number_for_array_test_];
 #endif
@@ -232,6 +236,13 @@ namespace terrier {
 // NOLINTNEXTLINE
     BENCHMARK_DEFINE_F(IndexBenchmark, RandomInsert)(benchmark::State &state) {
         for (auto _ : state) {
+#ifdef USE_PERF
+            std::cout << "Ready" << std::endl;
+            std::getchar();
+#endif
+
+
+
 #ifdef PARTIAL_TEST
             for (uint32_t num_inserts : num_inserts_list_)
                 for (int num_columns : num_columns_list_)
@@ -241,229 +252,251 @@ namespace terrier {
                 for (int num_columns = 1; num_columns <= max_num_columns_; num_columns++)
                     for (uint32_t num_threads = 1; num_threads <= max_num_threads_; num_threads++) {
 #endif
-                        double sum_time = 0;
-                        double sum_insert_time = 0;
-                        double insert_time_ms_[max_num_threads_];
-
-                        for (uint32_t i = num_threads; i < max_num_threads_; i++)
-                            for (uint32_t j = 0; j < tpch_filenum_; j++) {
-                                interp_exec_ms_[i][j].clear();
-                                adaptive_exec_ms_[i][j].clear();
-                                jit_exec_ms_[i][j].clear();
-                            }
-
-                        for (int times = 1; times <= max_times_; times++) {
-                            catalog::IndexSchema default_schema_;
-                            std::vector<catalog::IndexSchema::Column> keycols;
-
-                            for (int i = 0; i < num_columns; i++) {
-                                keycols.emplace_back(
-                                    "", type::TypeId::BIGINT, false,
-                                    parser::ColumnValueExpression(catalog::db_oid_t(0), catalog::table_oid_t(0), catalog::col_oid_t(i)));
-                                StorageTestUtil::ForceOid(&(keycols[i]), catalog::indexkeycol_oid_t(i));
-                            }
-                                // key_schema_.push_back({catalog::indexkeycol_oid_t(i), type::TypeId::BIGINT, false});
-                            default_schema_ = catalog::IndexSchema(keycols, false, false, false, true);
-                            common::WorkerPool bwtree_thread_pool{num_threads, {}};
-                            common::WorkerPool tpch_thread_pool{max_num_threads_ - num_threads, {}};
-
-                            // BwTreeIndex
-                            storage::index::Index * default_index = (storage::index::IndexBuilder()
-                                    .SetConstraintType(storage::index::ConstraintType::DEFAULT)
-                                    .SetKeySchema(default_schema_)
-                                    .SetOid(catalog::index_oid_t(2)))
-                                    .Build();
-
-                            gc_thread_->GetGarbageCollector().RegisterIndexForGC(default_index);
-                            bool unfinished = true;
-#ifdef LOOP_TEST
-                            bool always_false = false;
-#endif
-
-                            auto run_my_tpch = [&](uint32_t worker_id, uint32_t core_id) {
-#ifdef EMPTY_TEST
-                                return;
-#endif
-#ifdef MY_PIN_TO_CORE
-                                // Pin to core
-                                cpu_set_t cpu_set;
-                                CPU_ZERO(&cpu_set);
-                                CPU_SET(core_id, &cpu_set);
-                                int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set), &cpu_set);
-                                if(ret != 0) {
-                                    fprintf(stderr, "CPU setting failed...\n");
-                                    exit(1);
-                                }
-#endif
-                                //while (unfinished) sleep(1);
-                                //std::cout << "Out " << worker_id << std::endl;
-                                //return;
-#ifdef LOOP_TEST
-                                int x = 1;
-                                while(unfinished) {
-                                    for (int i = 0; i < (1 << 30); i++)
-                                        x = x * 3 + 7;
-                                    sleep(0);
-                                }
-                                if (always_false)
-                                    std::cout << x << std::endl;
-                                return;
-#endif
-#ifdef ARRAY_TEST
-                                while(unfinished) {
-#ifdef ARRAY10M
-                                    for (int i = 0; unfinished; i = (i + 1) % (big_number_for_array_test_ /
-                                                                               (max_num_threads_ - num_threads)))
-#else
-                                    for (int i = 0; unfinished; i = (i + 1) % big_number_for_array_test_)
-#endif
-                                        array_for_array_test_[worker_id][i] = array_for_array_test_[worker_id][i] * 3 + 7;
-                                    sleep(0);
-                                }
-                                return;
-#endif
-                                execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_, catalog_pointer_,
-                                                            &unfinished);
-                                // the vectors are cleared outside the time loop
-                                for (uint32_t i = worker_id % tpch_filenum_; unfinished; i = (i + 1) % tpch_filenum_) {
-                                    my_tpch.RunFile(tpch_filename_[i], &interp_exec_ms_[worker_id][i],
-                                                                                &adaptive_exec_ms_[worker_id][i],
-                                                                                &jit_exec_ms_[worker_id][i]);
-                                }
-                            };
-
-                            auto workload = [&](uint32_t worker_id, uint32_t core_id) {
-#ifdef MY_PIN_TO_CORE
-                                // Pin to core
-                                cpu_set_t cpu_set;
-                                CPU_ZERO(&cpu_set);
-                                CPU_SET(core_id, &cpu_set);
-                                int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set), &cpu_set);
-                                if(ret != 0) {
-                                    fprintf(stderr, "CPU setting failed...\n");
-                                    exit(1);
-                                }
-#endif
-                                double thread_run_time_ms = 0;
-                                auto *const key_buffer =
-                                        common::AllocationUtil::AllocateAligned(default_index->GetProjectedRowInitializer().ProjectedRowSize());
-                                auto *const insert_key = default_index->GetProjectedRowInitializer().InitializeRow(key_buffer);
-                                uint32_t my_num_inserts = num_inserts / num_threads;
-                                if (worker_id < num_inserts - my_num_inserts * num_threads)
-                                    my_num_inserts++;
-                                auto *const txn = txn_manager_.BeginTransaction();
-
-                                for (int table_cnt = 0; table_cnt * num_inserts_per_table_ < my_num_inserts; table_cnt++) {
-                                    int table_index = table_cnt * num_threads + worker_id;
-                                    storage::SqlTable * sql_table = sql_tables_[table_index];
-                                    int num_to_insert = my_num_inserts - table_cnt * num_inserts_per_table_;
-                                    if (num_to_insert > (int)num_inserts_per_table_)
-                                        num_to_insert = (int)num_inserts_per_table_;
-                                    int num_inserted = 0;
-                                    auto it = sql_table->begin();
-
-                                    std::vector<catalog::col_oid_t> col_oids_for_use;
-                                    col_oids_for_use.clear();
-                                    for (int i = 0; i < num_columns; i++)
-                                        col_oids_for_use.push_back(col_oids_[i]);
-#ifdef SCAN_ALL
-                                    int num_to_scan = num_to_insert;
-#else
-                                    int num_to_scan = scan_size_kb_ / num_columns / 8;
-#endif
-                                    storage::ProjectedColumnsInitializer initializer = sql_table->InitializerForProjectedColumns(col_oids_for_use, (uint32_t)num_to_scan).first;
-                                    auto *buffer = common::AllocationUtil::AllocateAligned(initializer.ProjectedColumnsSize());
-                                    storage::ProjectedColumns *columns = initializer.Initialize(buffer);
-                                    do {
-                                        sql_table->Scan(txn, &it, columns);
-                                        uint32_t num_read = columns->NumTuples();
-                                        double run_time_ms = 0;
-                                        {
-                                            execution::util::ScopedTimer<std::milli> timer(&run_time_ms);
-                                            for (uint32_t i = 0; i < num_read; i++) {
-                                                storage::ProjectedColumns::RowView stored = columns->InterpretAsRow(i);
-                                                for (uint16_t j = 0; j < (uint16_t) num_columns; j++)
-                                                    *reinterpret_cast<int64_t *>(insert_key->AccessForceNotNull(j)) =
-                                                            *reinterpret_cast<int64_t *>(stored.AccessForceNotNull(j));
-                                                default_index->Insert(txn, *insert_key, columns->TupleSlots()[i]);
-                                                ++num_inserted;
-                                                if (num_inserted >= num_to_insert)
-                                                    break;
-                                            }
-                                        }
-                                        thread_run_time_ms += run_time_ms;
-                                    } while (num_inserted < num_to_insert && it != sql_table->end());
-                                    delete[] buffer;
-                                }
-                                txn_manager_.Commit(txn, transaction::TransactionUtil::EmptyCallback, nullptr);
-                                insert_time_ms_[worker_id] = thread_run_time_ms;
-
-                                delete[] key_buffer;
-                            };
-
-                            for (uint32_t i = num_threads; i < max_num_threads_; i++) {
-                                tpch_thread_pool.SubmitTask([i, &run_my_tpch] { run_my_tpch(i, core_ids_[i]); });
-                            }
-
-                            double elapsed_ms;
-                            {
-                                execution::util::ScopedTimer<std::milli> timer(&elapsed_ms);
-
-                                // run the workload
-                                for (uint32_t i = 0; i < num_threads; i++) {
-                                    bwtree_thread_pool.SubmitTask([i, &workload] { workload(i, core_ids_[i]); });
-                                }
-                                bwtree_thread_pool.WaitUntilAllFinished();
-                            }
-                            unfinished = false;
-                            tpch_thread_pool.WaitUntilAllFinished();
-
-                            gc_thread_->GetGarbageCollector().UnregisterIndexForGC(default_index);
-
-                            delete default_index;
-                            sum_time += elapsed_ms;
-                            double max_insert_time = 0;
-                            for (uint32_t i = 0; i < num_threads; i++)
-                                if (insert_time_ms_[i] > max_insert_time)
-                                    max_insert_time = insert_time_ms_[i];
-                            sum_insert_time += max_insert_time;
-                        }
-                        // keysize threadnum insertnum time(s)
-                        std::cout << "bwtree_time" << "\t" << num_columns << "\t" << num_threads << "\t" << num_inserts
-                                  << "\t" << sum_time / max_times_ / 1000.0
-                                  << "\t" << sum_insert_time / max_times_ / 1000.0 << std::endl;
 #ifndef EMPTY_TEST
 #ifndef LOOP_TEST
 #ifndef ARRAY_TEST
-                        double interp_exec_ms_sum[tpch_filenum_] = {0}, adaptive_exec_ms_sum[tpch_filenum_] = {0}, jit_exec_ms_sum[tpch_filenum_] = {0};
-                        double interp_exec_ms_cnt[tpch_filenum_] = {0}, adaptive_exec_ms_cnt[tpch_filenum_] = {0}, jit_exec_ms_cnt[tpch_filenum_] = {0};
-                        for (uint32_t i = num_threads; i < max_num_threads_; i++)
-                            for (uint32_t j = 0; j < tpch_filenum_; j++) {
-                                interp_exec_ms_sum_[i][j] = std::accumulate(std::begin(interp_exec_ms_[i][j]), std::end(interp_exec_ms_[i][j]), 0.0);
-                                interp_exec_ms_sum[j] += interp_exec_ms_sum_[i][j];
-                                interp_exec_ms_cnt[j] += (double)interp_exec_ms_[i][j].size();
-                                adaptive_exec_ms_sum_[i][j] = std::accumulate(std::begin(adaptive_exec_ms_[i][j]), std::end(adaptive_exec_ms_[i][j]), 0.0);
-                                adaptive_exec_ms_sum[j] += adaptive_exec_ms_sum_[i][j];
-                                adaptive_exec_ms_cnt[j] += (double)adaptive_exec_ms_[i][j].size();
-                                jit_exec_ms_sum_[i][j] = std::accumulate(std::begin(jit_exec_ms_[i][j]), std::end(jit_exec_ms_[i][j]), 0.0);
-                                jit_exec_ms_sum[j] += jit_exec_ms_sum_[i][j];
-                                jit_exec_ms_cnt[j] += (double)jit_exec_ms_[i][j].size();
+                        for (uint32_t filenum : filenum_list_) {
+#endif
+#endif
+#endif
+
+                            double sum_time = 0;
+                            double sum_insert_time = 0;
+                            double insert_time_ms_[max_num_threads_];
+
+                            for (uint32_t i = num_threads; i < max_num_threads_; i++) {
+                                interp_exec_ms_[i].clear();
+                                adaptive_exec_ms_[i].clear();
+                                jit_exec_ms_[i].clear();
                             }
-                        // keysize threadnum insertnum interp_time adaptive_time jit_time(ms)
-                        for (uint32_t j = 0; j < tpch_filenum_; j++) {
-                            std::cout << tpch_filename_[j] << "\t" << num_columns << "\t" << num_threads << "\t"
-                                      << num_inserts
-                                      << "\t" << interp_exec_ms_sum[j] / interp_exec_ms_cnt[j]
-                                      << "\t" << adaptive_exec_ms_sum[j] / adaptive_exec_ms_cnt[j]
-                                      << "\t" << jit_exec_ms_sum[j] / jit_exec_ms_cnt[j]
+
+                            for (int times = 1; times <= max_times_; times++) {
+                                catalog::IndexSchema default_schema_;
+                                std::vector<catalog::IndexSchema::Column> keycols;
+
+                                for (int i = 0; i < num_columns; i++) {
+                                    keycols.emplace_back(
+                                            "", type::TypeId::BIGINT, false,
+                                            parser::ColumnValueExpression(catalog::db_oid_t(0), catalog::table_oid_t(0),
+                                                                          catalog::col_oid_t(i)));
+                                    StorageTestUtil::ForceOid(&(keycols[i]), catalog::indexkeycol_oid_t(i));
+                                }
+                                // key_schema_.push_back({catalog::indexkeycol_oid_t(i), type::TypeId::BIGINT, false});
+                                default_schema_ = catalog::IndexSchema(keycols, false, false, false, true);
+                                common::WorkerPool bwtree_thread_pool{num_threads, {}};
+                                common::WorkerPool tpch_thread_pool{max_num_threads_ - num_threads, {}};
+
+                                // BwTreeIndex
+                                storage::index::Index *default_index = (storage::index::IndexBuilder()
+                                        .SetConstraintType(storage::index::ConstraintType::DEFAULT)
+                                        .SetKeySchema(default_schema_)
+                                        .SetOid(catalog::index_oid_t(2)))
+                                        .Build();
+
+                                gc_thread_->GetGarbageCollector().RegisterIndexForGC(default_index);
+                                bool unfinished = true;
+#ifdef LOOP_TEST
+                                bool always_false = false;
+#endif
+
+                                auto run_my_tpch = [&](uint32_t worker_id, uint32_t core_id) {
+#ifdef EMPTY_TEST
+                                    return;
+#endif
+#ifdef MY_PIN_TO_CORE
+                                    // Pin to core
+                                    cpu_set_t cpu_set;
+                                    CPU_ZERO(&cpu_set);
+                                    CPU_SET(core_id, &cpu_set);
+                                    int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set), &cpu_set);
+                                    if(ret != 0) {
+                                        fprintf(stderr, "CPU setting failed...\n");
+                                        exit(1);
+                                    }
+#endif
+                                    //while (unfinished) sleep(1);
+                                    //std::cout << "Out " << worker_id << std::endl;
+                                    //return;
+#ifdef LOOP_TEST
+                                    int x = 1;
+                                    while(unfinished) {
+                                        for (int i = 0; i < (1 << 30); i++)
+                                            x = x * 3 + 7;
+                                        sleep(0);
+                                    }
+                                    if (always_false)
+                                        std::cout << x << std::endl;
+                                    return;
+#endif
+#ifdef ARRAY_TEST
+                                    while(unfinished) {
+#ifdef ARRAY10M
+                                        for (int i = 0; unfinished; i = (i + 1) % (big_number_for_array_test_ /
+                                                                                   (max_num_threads_ - num_threads)))
+#else
+                                        for (int i = 0; unfinished; i = (i + 1) % big_number_for_array_test_)
+#endif
+                                            array_for_array_test_[worker_id][i] = array_for_array_test_[worker_id][i] * 3 + 7;
+                                        sleep(0);
+                                    }
+                                    return;
+#endif
+                                    execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_,
+                                                                catalog_pointer_,
+                                                                &unfinished);
+                                    // the vectors are cleared outside the time loop
+                                    my_tpch.RunFile(tpch_filename_[filenum], &interp_exec_ms_[worker_id],
+                                                    &adaptive_exec_ms_[worker_id],
+                                                    &jit_exec_ms_[worker_id]);
+                                };
+
+                                auto workload = [&](uint32_t worker_id, uint32_t core_id) {
+#ifdef MY_PIN_TO_CORE
+                                    // Pin to core
+                                    cpu_set_t cpu_set;
+                                    CPU_ZERO(&cpu_set);
+                                    CPU_SET(core_id, &cpu_set);
+                                    int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set), &cpu_set);
+                                    if(ret != 0) {
+                                        fprintf(stderr, "CPU setting failed...\n");
+                                        exit(1);
+                                    }
+#endif
+                                    double thread_run_time_ms = 0;
+                                    auto *const key_buffer =
+                                            common::AllocationUtil::AllocateAligned(
+                                                    default_index->GetProjectedRowInitializer().ProjectedRowSize());
+                                    auto *const insert_key = default_index->GetProjectedRowInitializer().InitializeRow(
+                                            key_buffer);
+                                    uint32_t my_num_inserts = num_inserts / num_threads;
+                                    if (worker_id < num_inserts - my_num_inserts * num_threads)
+                                        my_num_inserts++;
+                                    auto *const txn = txn_manager_.BeginTransaction();
+
+                                    for (int table_cnt = 0;
+                                         table_cnt * num_inserts_per_table_ < my_num_inserts; table_cnt++) {
+                                        int table_index = table_cnt * num_threads + worker_id;
+                                        storage::SqlTable *sql_table = sql_tables_[table_index];
+                                        int num_to_insert = my_num_inserts - table_cnt * num_inserts_per_table_;
+                                        if (num_to_insert > (int) num_inserts_per_table_)
+                                            num_to_insert = (int) num_inserts_per_table_;
+                                        int num_inserted = 0;
+                                        auto it = sql_table->begin();
+
+                                        std::vector<catalog::col_oid_t> col_oids_for_use;
+                                        col_oids_for_use.clear();
+                                        for (int i = 0; i < num_columns; i++)
+                                            col_oids_for_use.push_back(col_oids_[i]);
+#ifdef SCAN_ALL
+                                        int num_to_scan = num_to_insert;
+#else
+                                        int num_to_scan = scan_size_kb_ / num_columns / 8;
+#endif
+                                        storage::ProjectedColumnsInitializer initializer = sql_table->InitializerForProjectedColumns(
+                                                col_oids_for_use, (uint32_t) num_to_scan).first;
+                                        auto *buffer = common::AllocationUtil::AllocateAligned(
+                                                initializer.ProjectedColumnsSize());
+                                        storage::ProjectedColumns *columns = initializer.Initialize(buffer);
+                                        do {
+                                            sql_table->Scan(txn, &it, columns);
+                                            uint32_t num_read = columns->NumTuples();
+                                            double run_time_ms = 0;
+                                            {
+                                                execution::util::ScopedTimer<std::milli> timer(&run_time_ms);
+                                                for (uint32_t i = 0; i < num_read; i++) {
+                                                    storage::ProjectedColumns::RowView stored = columns->InterpretAsRow(
+                                                            i);
+                                                    for (uint16_t j = 0; j < (uint16_t) num_columns; j++)
+                                                        *reinterpret_cast<int64_t *>(insert_key->AccessForceNotNull(
+                                                                j)) =
+                                                                *reinterpret_cast<int64_t *>(stored.AccessForceNotNull(
+                                                                        j));
+                                                    default_index->Insert(txn, *insert_key, columns->TupleSlots()[i]);
+                                                    ++num_inserted;
+                                                    if (num_inserted >= num_to_insert)
+                                                        break;
+                                                }
+                                            }
+                                            thread_run_time_ms += run_time_ms;
+                                        } while (num_inserted < num_to_insert && it != sql_table->end());
+                                        delete[] buffer;
+                                    }
+                                    txn_manager_.Commit(txn, transaction::TransactionUtil::EmptyCallback, nullptr);
+                                    insert_time_ms_[worker_id] = thread_run_time_ms;
+
+                                    delete[] key_buffer;
+                                };
+
+                                for (uint32_t i = num_threads; i < max_num_threads_; i++) {
+                                    tpch_thread_pool.SubmitTask([i, &run_my_tpch] { run_my_tpch(i, core_ids_[i]); });
+                                }
+
+                                double elapsed_ms;
+                                {
+                                    execution::util::ScopedTimer<std::milli> timer(&elapsed_ms);
+
+                                    // run the workload
+                                    for (uint32_t i = 0; i < num_threads; i++) {
+                                        bwtree_thread_pool.SubmitTask([i, &workload] { workload(i, core_ids_[i]); });
+                                    }
+                                    bwtree_thread_pool.WaitUntilAllFinished();
+                                }
+                                unfinished = false;
+                                tpch_thread_pool.WaitUntilAllFinished();
+
+                                gc_thread_->GetGarbageCollector().UnregisterIndexForGC(default_index);
+
+                                delete default_index;
+                                sum_time += elapsed_ms;
+                                double max_insert_time = 0;
+                                for (uint32_t i = 0; i < num_threads; i++)
+                                    if (insert_time_ms_[i] > max_insert_time)
+                                        max_insert_time = insert_time_ms_[i];
+                                sum_insert_time += max_insert_time;
+                            }
+                            // keysize threadnum insertnum time(s)
+                            std::cout << "bwtree_time" << "\t" << num_columns << "\t" << num_threads << "\t"
+                                      << num_inserts << "\t" << filenum
+                                      << "\t" << sum_time / max_times_ / 1000.0
+                                      << "\t" << sum_insert_time / max_times_ / 1000.0 << std::endl;
+#ifndef EMPTY_TEST
+#ifndef LOOP_TEST
+#ifndef ARRAY_TEST
+                            double interp_exec_ms_sum = 0, adaptive_exec_ms_sum = 0, jit_exec_ms_sum = 0;
+                            double interp_exec_ms_cnt = 0, adaptive_exec_ms_cnt = 0, jit_exec_ms_cnt = 0;
+                            for (uint32_t i = num_threads; i < max_num_threads_; i++) {
+                                interp_exec_ms_sum_[i] = std::accumulate(std::begin(interp_exec_ms_[i]),
+                                                                            std::end(interp_exec_ms_[i]), 0.0);
+                                interp_exec_ms_sum += interp_exec_ms_sum_[i];
+                                interp_exec_ms_cnt += (double) interp_exec_ms_[i].size();
+                                adaptive_exec_ms_sum_[i] = std::accumulate(std::begin(adaptive_exec_ms_[i]),
+                                                                              std::end(adaptive_exec_ms_[i]),
+                                                                              0.0);
+                                adaptive_exec_ms_sum += adaptive_exec_ms_sum_[i];
+                                adaptive_exec_ms_cnt += (double) adaptive_exec_ms_[i].size();
+                                jit_exec_ms_sum_[i] = std::accumulate(std::begin(jit_exec_ms_[i]),
+                                                                         std::end(jit_exec_ms_[i]), 0.0);
+                                jit_exec_ms_sum += jit_exec_ms_sum_[i];
+                                jit_exec_ms_cnt += (double) jit_exec_ms_[i].size();
+                            }
+                            // keysize threadnum insertnum interp_time adaptive_time jit_time(ms)
+                            std::cout << tpch_filename_[filenum] << "\t" << num_columns << "\t" << num_threads << "\t"
+                                      << num_inserts << "\t" << filenum
+                                      << "\t" << interp_exec_ms_sum / interp_exec_ms_cnt
+                                      << "\t" << adaptive_exec_ms_sum / adaptive_exec_ms_cnt
+                                      << "\t" << jit_exec_ms_sum / jit_exec_ms_cnt
                                       << std::endl;
                         }
 #endif
 #endif
 #endif
                     }
-        }
+#ifdef USE_PERF
+            std::cout << "Finished" << std::endl;
+            std::getchar();
+#endif
     }
+}
 
 
 // state.range(0) is key size

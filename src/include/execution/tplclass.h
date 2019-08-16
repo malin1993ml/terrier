@@ -6,6 +6,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 #include "tbb/task_scheduler_init.h"
@@ -111,6 +112,7 @@ namespace terrier::execution {
 
             double parse_ms = 0.0, typecheck_ms = 0.0, codegen_ms = 0.0, interp_exec_ms = 0.0, adaptive_exec_ms = 0.0,
                     jit_exec_ms = 0.0;
+            uint64_t jit_cnt = 0;
 
             //
             // Parse
@@ -165,7 +167,7 @@ namespace terrier::execution {
             }
 
             auto module = std::make_unique<vm::Module>(std::move(bytecode_module));
-
+/*
             //
             // Interpret
             //
@@ -193,7 +195,7 @@ namespace terrier::execution {
                     EXECUTION_LOG_INFO("VM main() returned: {}", main());
                 }
             }
-/*
+
             //
             // Adaptive
             //
@@ -226,7 +228,6 @@ namespace terrier::execution {
             // JIT
             //
             {
-                util::ScopedTimer<std::milli> timer(&jit_exec_ms);
 
                 if (kIsSQL) {
                     std::function<i64(exec::ExecutionContext *)> main;
@@ -238,7 +239,12 @@ namespace terrier::execution {
                     }
                     auto memory = std::make_unique<sql::MemoryPool>(nullptr);
                     exec_ctx.SetMemoryPool(std::move(memory));
-                    EXECUTION_LOG_INFO("JIT main() returned: {}", main(&exec_ctx));
+                    util::ScopedTimer<std::milli> timer(&jit_exec_ms);
+                    while(*unfinished_) {
+                        EXECUTION_LOG_INFO("JIT main() returned: {}", main(&exec_ctx));
+                        sleep(0);
+                        jit_cnt++;
+                    }
                 } else {
                     std::function<i64()> main;
                     if (!module->GetFunction("main", vm::ExecutionMode::Compiled, &main)) {
@@ -255,16 +261,14 @@ namespace terrier::execution {
                     "Adaptive Exec.: {} ms, Jit+Exec.: {} ms",
                     parse_ms, typecheck_ms, codegen_ms, interp_exec_ms, adaptive_exec_ms, jit_exec_ms);
             txn_manager_pointer_->Commit(txn, [](void *) {}, nullptr);
-            if (*unfinished_) {
-                interp_exec_ms_pointer_->push_back(interp_exec_ms);
-                adaptive_exec_ms_pointer_->push_back(adaptive_exec_ms);
-                jit_exec_ms_pointer_->push_back(jit_exec_ms);
-            }
+            interp_exec_ms_pointer_->push_back(interp_exec_ms);
+            adaptive_exec_ms_pointer_->push_back(adaptive_exec_ms);
+            jit_exec_ms_pointer_->push_back(jit_exec_ms/(double)jit_cnt);
         }
 
-    /**
-     * Run the TPL REPL
-     */
+        /**
+         * Run the TPL REPL
+         */
         void RunRepl() {
             while (true) {
                 std::string input;
@@ -285,13 +289,13 @@ namespace terrier::execution {
             }
         }
 
-    /**
-     * Compile and run the TPL program in the given filename
-     * @param filename The name of the file on disk to compile
-     */
+        /**
+         * Compile and run the TPL program in the given filename
+         * @param filename The name of the file on disk to compile
+         */
         void RunFile(const std::string &filename, std::vector<double> *interp_exec_ms_pointer,
-                                                  std::vector<double> *adaptive_exec_ms_pointer,
-                                                  std::vector<double> *jit_exec_ms_pointer) {
+                     std::vector<double> *adaptive_exec_ms_pointer,
+                     std::vector<double> *jit_exec_ms_pointer) {
             auto file = llvm::MemoryBuffer::getFile(filename);
             if (std::error_code error = file.getError()) {
                 EXECUTION_LOG_ERROR("There was an error reading file '{}': {}", filename, error.message());
@@ -308,9 +312,9 @@ namespace terrier::execution {
         }
 
 
-    /**
-     * Shutdown all TPL subsystems
-     */
+        /**
+         * Shutdown all TPL subsystems
+         */
         static void ShutdownTplClass() {
             vm::LLVMEngine::Shutdown();
             terrier::LoggersUtil::ShutDown();
@@ -332,7 +336,7 @@ namespace terrier::execution {
                                 exec::SampleOutput &sample_output,
                                 terrier::catalog::db_oid_t &db_oid,
                                 terrier::catalog::Catalog &catalog) {  // NOLINT (bugprone-exception-escape)
-            
+
             // Parse options
             llvm::cl::HideUnrelatedOptions(kTplOptionsCategory);
             llvm::cl::ParseCommandLineOptions(argc, argv);
