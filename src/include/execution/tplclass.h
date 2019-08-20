@@ -73,6 +73,11 @@ namespace terrier::execution {
         std::vector<double> *interp_exec_ms_pointer_, *adaptive_exec_ms_pointer_, *jit_exec_ms_pointer_;
         bool *unfinished_;
 
+        static const int max_num_modules_ = 6;
+        std::map <std::string, int> name_id_;
+        std::unique_ptr <vm::Module> modules_[max_num_modules_];
+        int num_modules_;
+
         TplClass(terrier::transaction::TransactionManager * txn_manager_pointer,
                  exec::SampleOutput * sample_output_pointer,
                  terrier::catalog::db_oid_t db_oid,
@@ -82,7 +87,10 @@ namespace terrier::execution {
                 sample_output_pointer_(sample_output_pointer),
                 db_oid_(db_oid),
                 catalog_pointer_(catalog_pointer),
-                unfinished_(unfinished) {}
+                unfinished_(unfinished) {
+            num_modules_ = 0;
+            name_id_.clear();
+        }
 
 /**
  * Compile the TPL source in \a source and run it in both interpreted and JIT
@@ -99,6 +107,9 @@ namespace terrier::execution {
 
             exec::ExecutionContext exec_ctx{db_oid_, txn, printer, output_schema, std::move(accessor)};
 
+            double parse_ms = 0.0, typecheck_ms = 0.0, codegen_ms = 0.0, interp_exec_ms = 0.0, adaptive_exec_ms = 0.0,
+                    jit_exec_ms = 0.0;
+
             //-----------------------------------------
             // Let's scan the source
             util::Region region("repl-ast");
@@ -106,67 +117,72 @@ namespace terrier::execution {
             sema::ErrorReporter error_reporter(&error_region);
             ast::Context context(&region, &error_reporter);
 
-            parsing::Scanner scanner(source.data(), source.length());
-            parsing::Rewriter rewriter(&context, exec_ctx.GetAccessor());
-            parsing::Parser parser(&scanner, &context, &rewriter);
+            auto itr = name_id_.find(name);
+            int module_id;
+            if (itr == name_id_.end()) {
+                parsing::Scanner scanner(source.data(), source.length());
+                parsing::Rewriter rewriter(&context, exec_ctx.GetAccessor());
+                parsing::Parser parser(&scanner, &context, &rewriter);
 
-            double parse_ms = 0.0, typecheck_ms = 0.0, codegen_ms = 0.0, interp_exec_ms = 0.0, adaptive_exec_ms = 0.0,
-                    jit_exec_ms = 0.0;
-            uint64_t jit_cnt = 0;
+                //
+                // Parse
+                //
 
-            //
-            // Parse
-            //
+                ast::AstNode *root;
+                {
+                    util::ScopedTimer<std::milli> timer(&parse_ms);
+                    root = parser.Parse();
+                }
 
-            ast::AstNode *root;
-            {
-                util::ScopedTimer<std::milli> timer(&parse_ms);
-                root = parser.Parse();
+                if (error_reporter.HasErrors()) {
+                    EXECUTION_LOG_ERROR("Parsing error!");
+                    error_reporter.PrintErrors();
+                    return;
+                }
+
+                //
+                // Type check
+                //
+
+                {
+                    util::ScopedTimer<std::milli> timer(&typecheck_ms);
+                    sema::Sema type_check(&context);
+                    type_check.Run(root);
+                }
+
+                if (error_reporter.HasErrors()) {
+                    EXECUTION_LOG_ERROR("Type-checking error!");
+                    error_reporter.PrintErrors();
+                    throw std::runtime_error("Type Checking Exception!");
+                }
+
+                // Dump AST
+                if (kPrintAst) {
+                    ast::AstDump::Dump(root);
+                }
+
+                //
+                // TBC generation
+                //
+
+                std::unique_ptr<vm::BytecodeModule> bytecode_module;
+                {
+                    util::ScopedTimer<std::milli> timer(&codegen_ms);
+                    bytecode_module = vm::BytecodeGenerator::Compile(root, &exec_ctx, name);
+                }
+
+                // Dump Bytecode
+                if (kPrintTbc) {
+                    bytecode_module->PrettyPrint(&std::cout);
+                }
+                modules_[num_modules_] = std::make_unique<vm::Module>(std::move(bytecode_module));
+                name_id_[name] = num_modules_;
+                module_id = num_modules_;
+                num_modules_++;
+            } else {
+                module_id = itr->second;
             }
 
-            if (error_reporter.HasErrors()) {
-                EXECUTION_LOG_ERROR("Parsing error!");
-                error_reporter.PrintErrors();
-                return;
-            }
-
-            //
-            // Type check
-            //
-
-            {
-                util::ScopedTimer<std::milli> timer(&typecheck_ms);
-                sema::Sema type_check(&context);
-                type_check.Run(root);
-            }
-
-            if (error_reporter.HasErrors()) {
-                EXECUTION_LOG_ERROR("Type-checking error!");
-                error_reporter.PrintErrors();
-                throw std::runtime_error("Type Checking Exception!");
-            }
-
-            // Dump AST
-            if (kPrintAst) {
-                ast::AstDump::Dump(root);
-            }
-
-            //
-            // TBC generation
-            //
-
-            std::unique_ptr<vm::BytecodeModule> bytecode_module;
-            {
-                util::ScopedTimer<std::milli> timer(&codegen_ms);
-                bytecode_module = vm::BytecodeGenerator::Compile(root, &exec_ctx, name);
-            }
-
-            // Dump Bytecode
-            if (kPrintTbc) {
-                bytecode_module->PrettyPrint(&std::cout);
-            }
-
-            auto module = std::make_unique<vm::Module>(std::move(bytecode_module));
 /*
             //
             // Interpret
@@ -231,7 +247,7 @@ namespace terrier::execution {
 
                 if (kIsSQL) {
                     std::function<i64(exec::ExecutionContext *)> main;
-                    if (!module->GetFunction("main", vm::ExecutionMode::Compiled, &main)) {
+                    if (!modules_[module_id]->GetFunction("main", vm::ExecutionMode::Compiled, &main)) {
                         EXECUTION_LOG_ERROR(
                                 "Missing 'main' entry function with signature "
                                 "(*ExecutionContext)->int64");
@@ -240,14 +256,10 @@ namespace terrier::execution {
                     auto memory = std::make_unique<sql::MemoryPool>(nullptr);
                     exec_ctx.SetMemoryPool(std::move(memory));
                     util::ScopedTimer<std::milli> timer(&jit_exec_ms);
-                    while(*unfinished_) {
-                        EXECUTION_LOG_INFO("JIT main() returned: {}", main(&exec_ctx));
-                        sleep(0);
-                        jit_cnt++;
-                    }
+                    EXECUTION_LOG_INFO("JIT main() returned: {}", main(&exec_ctx));
                 } else {
                     std::function<i64()> main;
-                    if (!module->GetFunction("main", vm::ExecutionMode::Compiled, &main)) {
+                    if (!modules_[module_id]->GetFunction("main", vm::ExecutionMode::Compiled, &main)) {
                         EXECUTION_LOG_ERROR("Missing 'main' entry function with signature ()->int64");
                         return;
                     }
@@ -263,7 +275,7 @@ namespace terrier::execution {
             txn_manager_pointer_->Commit(txn, [](void *) {}, nullptr);
             interp_exec_ms_pointer_->push_back(interp_exec_ms);
             adaptive_exec_ms_pointer_->push_back(adaptive_exec_ms);
-            jit_exec_ms_pointer_->push_back(jit_exec_ms/(double)jit_cnt);
+            jit_exec_ms_pointer_->push_back(jit_exec_ms);
         }
 
         /**
@@ -272,7 +284,6 @@ namespace terrier::execution {
         void RunRepl() {
             while (true) {
                 std::string input;
-
                 std::string line;
                 do {
                     printf(">>> ");
@@ -308,7 +319,7 @@ namespace terrier::execution {
             jit_exec_ms_pointer_ = jit_exec_ms_pointer;
 
             // Copy the source into a temporary, compile, and run
-            CompileAndRun((*file)->getBuffer().str());
+            CompileAndRun((*file)->getBuffer().str(), filename);
         }
 
 

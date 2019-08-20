@@ -13,6 +13,8 @@
 //#define MY_PIN_TO_CORE
 // Whether to use perf which needs getchar before main body
 //#define USE_PERF
+// Whether to run only one TPCH for each experiment; default is run all
+#define SINGLE_TPCH
 // Whether to scan whole table; otherwise scan 1M at a time
 //#define SCAN_ALL
 // To run full experiment, comment the following line
@@ -79,11 +81,12 @@ namespace terrier {
         static const uint32_t total_num_inserts_ = max_num_inserts_ * 2; // 2 times of maximum inserts
         static const uint32_t num_inserts_per_table_ = max_num_inserts_ / max_num_threads_ + 1;
 
-        static const uint32_t tpch_filenum_ = 4;
+        static const uint32_t tpch_filenum_ = 5;
         const std::string tpch_filename_[tpch_filenum_] = {"../sample_tpl/tpch/q1.tpl",
                                                                   "../sample_tpl/tpch/q4.tpl",
                                                                   "../sample_tpl/tpch/q5.tpl",
-                                                                  "../sample_tpl/tpch/q6.tpl"};
+                                                                  "../sample_tpl/tpch/q6.tpl",
+                                                                  "../sample_tpl/scanall.tpl"};
         static constexpr uint32_t core_ids_[18] = {0, 1, 2, 3, 4, 5, 6, 7, 8,
                                            20, 21, 22, 23, 24, 25, 26, 27, 28};
         const char * cmd0 = "tpl";
@@ -93,12 +96,12 @@ namespace terrier {
         const char * cmd_for_tpch[3] = {cmd0, cmd2, cmd3};
         const int scan_size_kb_ = 1000;
 
-        const uint32_t filenum_list_[1] = {0};
-        
+        const uint32_t filenum_list_[1] = {0}; // useless in this version
+
 #ifdef PARTIAL_TEST
 // if not full experiment, set the list of num_inserts, num_threads and num_columns
 #ifdef LOCAL_TEST
-        const uint32_t num_inserts_list_[1] = {10000000};
+        const uint32_t num_inserts_list_[1] = {1000000};
         const uint32_t num_threads_list_[1] = {3};
         const int num_columns_list_[1] = {3};
 #else
@@ -256,8 +259,14 @@ namespace terrier {
 #ifndef LOOP_TEST
 #ifndef ARRAY_TEST
                         for (uint32_t filenum : filenum_list_) {
+#else
+                            uint32_t filenum = 0;
 #endif
+#else
+                            uint32_t filenum = 0;
 #endif
+#else
+                            uint32_t filenum = 0;
 #endif
 
                             double sum_time = 0;
@@ -345,9 +354,15 @@ namespace terrier {
                                                                 catalog_pointer_,
                                                                 &unfinished);
                                     // the vectors are cleared outside the time loop
-                                    my_tpch.RunFile(tpch_filename_[filenum], &interp_exec_ms_[worker_id],
-                                                    &adaptive_exec_ms_[worker_id],
-                                                    &jit_exec_ms_[worker_id]);
+#ifdef SINGLE_TPCH
+                                    int fn = (int)filenum;
+                                    while (unfinished)
+#else
+                                    for (int fn = worker_id; unfinished; fn = (fn + 1) % 4)
+#endif
+                                        my_tpch.RunFile(tpch_filename_[fn], &interp_exec_ms_[worker_id],
+                                                        &adaptive_exec_ms_[worker_id],
+                                                        &jit_exec_ms_[worker_id]);
                                 };
 
                                 auto workload = [&](uint32_t worker_id, uint32_t core_id) {
