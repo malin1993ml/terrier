@@ -14,7 +14,7 @@
 // Whether to use perf which needs getchar before main body
 //#define USE_PERF
 // Whether to run only one TPCH for each experiment; default is run all
-#define SINGLE_TPCH
+//#define SINGLE_TPCH
 // Whether to scan whole table; otherwise scan 1M at a time
 //#define SCAN_ALL
 // To run full experiment, comment the following line
@@ -96,7 +96,7 @@ namespace terrier {
         const char * cmd_for_tpch[3] = {cmd0, cmd2, cmd3};
         const int scan_size_kb_ = 1000;
 
-        const uint32_t filenum_list_[1] = {0}; // useless in this version
+        const uint32_t filenum_list_[1] = {4};
 
 #ifdef PARTIAL_TEST
 // if not full experiment, set the list of num_inserts, num_threads and num_columns
@@ -115,7 +115,12 @@ namespace terrier {
         const int num_columns_list_[3] = {1, 3, 5};
          */
         const uint32_t num_inserts_list_[1] = {50000000};
+#ifdef USE_PERF
+        const uint32_t num_threads_list_[1] = {8};
+#else
         const uint32_t num_threads_list_[18] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18};
+        //const uint32_t num_threads_list_[8] = {7,8,9,10,11,12,13,14};
+#endif
         const int num_columns_list_[1] = {3};
 #endif
 

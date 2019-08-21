@@ -70,7 +70,6 @@ namespace terrier::execution {
         exec::SampleOutput * sample_output_pointer_;
         terrier::catalog::db_oid_t db_oid_;
         terrier::catalog::Catalog * catalog_pointer_;
-        std::vector<double> *interp_exec_ms_pointer_, *adaptive_exec_ms_pointer_, *jit_exec_ms_pointer_;
         bool *unfinished_;
 
         static const int max_num_modules_ = 6;
@@ -98,7 +97,11 @@ namespace terrier::execution {
  * @param source The TPL source
  * @param name The name of the module/program
  */
-        void CompileAndRun(const std::string &source, const std::string &name = "tmp-tpl") {
+        //void CompileAndRun(const std::string &source, const std::string &name = "tmp-tpl") {
+
+        void RunFile(const std::string &filename, std::vector<double> *interp_exec_ms_pointer,
+                     std::vector<double> *adaptive_exec_ms_pointer,
+                     std::vector<double> *jit_exec_ms_pointer) {
 
             auto *txn = txn_manager_pointer_->BeginTransaction();
             auto output_schema = sample_output_pointer_->GetSchema(kOutputName.data());
@@ -117,9 +120,19 @@ namespace terrier::execution {
             sema::ErrorReporter error_reporter(&error_region);
             ast::Context context(&region, &error_reporter);
 
-            auto itr = name_id_.find(name);
+            auto itr = name_id_.find(filename);
             int module_id;
             if (itr == name_id_.end()) {
+                auto file = llvm::MemoryBuffer::getFile(filename);
+                if (std::error_code error = file.getError()) {
+                    EXECUTION_LOG_ERROR("There was an error reading file '{}': {}", filename, error.message());
+                    return;
+                }
+
+                EXECUTION_LOG_INFO("Compiling and running file: {}", filename);
+
+                const std::string &source = (*file)->getBuffer().str();
+
                 parsing::Scanner scanner(source.data(), source.length());
                 parsing::Rewriter rewriter(&context, exec_ctx.GetAccessor());
                 parsing::Parser parser(&scanner, &context, &rewriter);
@@ -168,7 +181,7 @@ namespace terrier::execution {
                 std::unique_ptr<vm::BytecodeModule> bytecode_module;
                 {
                     util::ScopedTimer<std::milli> timer(&codegen_ms);
-                    bytecode_module = vm::BytecodeGenerator::Compile(root, &exec_ctx, name);
+                    bytecode_module = vm::BytecodeGenerator::Compile(root, &exec_ctx, filename);
                 }
 
                 // Dump Bytecode
@@ -176,7 +189,7 @@ namespace terrier::execution {
                     bytecode_module->PrettyPrint(&std::cout);
                 }
                 modules_[num_modules_] = std::make_unique<vm::Module>(std::move(bytecode_module));
-                name_id_[name] = num_modules_;
+                name_id_[filename] = num_modules_;
                 module_id = num_modules_;
                 num_modules_++;
             } else {
@@ -273,14 +286,14 @@ namespace terrier::execution {
                     "Adaptive Exec.: {} ms, Jit+Exec.: {} ms",
                     parse_ms, typecheck_ms, codegen_ms, interp_exec_ms, adaptive_exec_ms, jit_exec_ms);
             txn_manager_pointer_->Commit(txn, [](void *) {}, nullptr);
-            interp_exec_ms_pointer_->push_back(interp_exec_ms);
-            adaptive_exec_ms_pointer_->push_back(adaptive_exec_ms);
-            jit_exec_ms_pointer_->push_back(jit_exec_ms);
+            interp_exec_ms_pointer->push_back(interp_exec_ms);
+            adaptive_exec_ms_pointer->push_back(adaptive_exec_ms);
+            jit_exec_ms_pointer->push_back(jit_exec_ms);
         }
 
         /**
          * Run the TPL REPL
-         */
+
         void RunRepl() {
             while (true) {
                 std::string input;
@@ -298,29 +311,13 @@ namespace terrier::execution {
 
                 CompileAndRun(input);
             }
-        }
+        }*/
 
         /**
          * Compile and run the TPL program in the given filename
          * @param filename The name of the file on disk to compile
          */
-        void RunFile(const std::string &filename, std::vector<double> *interp_exec_ms_pointer,
-                     std::vector<double> *adaptive_exec_ms_pointer,
-                     std::vector<double> *jit_exec_ms_pointer) {
-            auto file = llvm::MemoryBuffer::getFile(filename);
-            if (std::error_code error = file.getError()) {
-                EXECUTION_LOG_ERROR("There was an error reading file '{}': {}", filename, error.message());
-                return;
-            }
 
-            EXECUTION_LOG_INFO("Compiling and running file: {}", filename);
-            interp_exec_ms_pointer_ = interp_exec_ms_pointer;
-            adaptive_exec_ms_pointer_ = adaptive_exec_ms_pointer;
-            jit_exec_ms_pointer_ = jit_exec_ms_pointer;
-
-            // Copy the source into a temporary, compile, and run
-            CompileAndRun((*file)->getBuffer().str(), filename);
-        }
 
 
         /**
