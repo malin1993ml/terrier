@@ -101,8 +101,8 @@ namespace terrier {
 #ifdef PARTIAL_TEST
 // if not full experiment, set the list of num_inserts, num_threads and num_columns
 #ifdef LOCAL_TEST
-        const uint32_t num_inserts_list_[1] = {1000000};
-        const uint32_t num_threads_list_[1] = {3};
+        const uint32_t num_inserts_list_[1] = {10000000};
+        const uint32_t num_threads_list_[1] = {2};
         const int num_columns_list_[1] = {3};
 #else
 
@@ -363,7 +363,7 @@ namespace terrier {
                                     int fn = (int)filenum;
                                     while (unfinished)
 #else
-                                    for (int fn = worker_id; unfinished; fn = (fn + 1) % 4)
+                                    for (int fn = worker_id % 4; unfinished; fn = (fn + 1) % 4)
 #endif
                                         my_tpch.RunFile(tpch_filename_[fn], &interp_exec_ms_[worker_id],
                                                         &adaptive_exec_ms_[worker_id],
