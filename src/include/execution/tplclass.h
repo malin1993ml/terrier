@@ -99,9 +99,13 @@ namespace terrier::execution {
  */
         //void CompileAndRun(const std::string &source, const std::string &name = "tmp-tpl") {
 
-        void RunFile(const std::string &filename, std::vector<double> *interp_exec_ms_pointer,
-                     std::vector<double> *adaptive_exec_ms_pointer,
-                     std::vector<double> *jit_exec_ms_pointer) {
+        void RunFile(const std::string &filename,
+                double *interp_exec_ms_sum,
+                uint64_t *interp_exec_ms_cnt,
+                double *adaptive_exec_ms_sum,
+                uint64_t *adaptive_exec_ms_cnt,
+                double *jit_exec_ms_sum,
+                uint64_t *jit_exec_ms_cnt) {
 
             auto *txn = txn_manager_pointer_->BeginTransaction();
             auto output_schema = sample_output_pointer_->GetSchema(kOutputName.data());
@@ -286,9 +290,8 @@ namespace terrier::execution {
                     "Adaptive Exec.: {} ms, Jit+Exec.: {} ms",
                     parse_ms, typecheck_ms, codegen_ms, interp_exec_ms, adaptive_exec_ms, jit_exec_ms);
             txn_manager_pointer_->Commit(txn, [](void *) {}, nullptr);
-            interp_exec_ms_pointer->push_back(interp_exec_ms);
-            adaptive_exec_ms_pointer->push_back(adaptive_exec_ms);
-            jit_exec_ms_pointer->push_back(jit_exec_ms);
+            *jit_exec_ms_sum += jit_exec_ms;
+            *jit_exec_ms_cnt += 1;
         }
 
         /**
