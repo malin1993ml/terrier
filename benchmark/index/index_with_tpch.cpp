@@ -1,8 +1,10 @@
 // Whether it is a local test with small numbers
-#define LOCAL_TEST
+//#define LOCAL_TEST
 // Use TPCH as default, do not use more than 1 replacement
 // Whether remove TPCH
-//#define EMPTY_TEST
+#define EMPTY_TEST
+// Whether run one task, remember to define task type at the same time
+//#define ONE_TEST
 // Whether use loop instead of TPCH
 //#define LOOP_TEST
 // Whether use array operation instead of TPCH
@@ -10,7 +12,7 @@
 // Whether use 10M array in total
 //#define ARRAY10M
 // Whether pin to core
-//#define MY_PIN_TO_CORE
+#define MY_PIN_TO_CORE
 // Whether to use perf which needs getchar before main body
 //#define USE_PERF
 // Whether to run only one TPCH for each experiment; default is run all
@@ -87,8 +89,13 @@ namespace terrier {
                                                                   "../sample_tpl/tpch/q5.tpl",
                                                                   "../sample_tpl/tpch/q6.tpl",
                                                                   "../sample_tpl/scanall.tpl"};
+#ifdef ONE_TEST
+        static constexpr uint32_t core_ids_[17] = {0, 1, 2, 3, 4, 5, 6, 7, 8,
+                                               21, 22, 23, 24, 25, 26, 27, 28};
+#else
         static constexpr uint32_t core_ids_[18] = {0, 1, 2, 3, 4, 5, 6, 7, 8,
                                            20, 21, 22, 23, 24, 25, 26, 27, 28};
+#endif
         const char * cmd0 = "tpl";
         //const char * cmd1 = "";//"-output-name=tpch_q1";
         const char * cmd2 = "-sql";
@@ -118,8 +125,14 @@ namespace terrier {
 #ifdef USE_PERF
         const uint32_t num_threads_list_[1] = {8};
 #else
-        const uint32_t num_threads_list_[18] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18};
+#ifdef ONE_TEST
+        const uint32_t num_threads_list_[8] = {18,16,12,10,9,6,4,1};
+        //const uint32_t num_threads_list_[17] = {17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1};
+#else
+        const uint32_t num_threads_list_[4] = {9,6,4,1};
+        //const uint32_t num_threads_list_[18] = {18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1};
         //const uint32_t num_threads_list_[8] = {7,8,9,10,11,12,13,14};
+#endif
 #endif
         const int num_columns_list_[1] = {3};
 #endif
@@ -452,11 +465,16 @@ namespace terrier {
 
                                     delete[] key_buffer;
                                 };
-
+#ifdef ONE_TEST
+                                {
+                                    uint32_t i = 18;
+                                    tpch_thread_pool.SubmitTask([i, &run_my_tpch] { run_my_tpch(i, 20); });
+                                }
+#else
                                 for (uint32_t i = num_threads; i < max_num_threads_; i++) {
                                     tpch_thread_pool.SubmitTask([i, &run_my_tpch] { run_my_tpch(i, core_ids_[i]); });
                                 }
-
+#endif
                                 double elapsed_ms;
                                 {
                                     execution::util::ScopedTimer<std::milli> timer(&elapsed_ms);
