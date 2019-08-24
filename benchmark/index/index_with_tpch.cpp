@@ -62,12 +62,12 @@ namespace terrier {
     public:
 // this is the maximum num_inserts, num_threads and num_columns
 // for initialization and full experiment
-        static const int max_num_columns_ = 3;
+        static const int max_num_columns_ = 6;
 #ifdef LOCAL_TEST
         static const uint32_t max_num_inserts_ = 10000000;
         static const uint32_t max_num_threads_ = 4;
 #else
-        static const uint32_t max_num_inserts_ = 50000000;//(2 << 27);
+        static const uint32_t max_num_inserts_ = 67108864;//10000000;//(2 << 27);
         static const uint32_t max_num_threads_ = 18;
 #endif
 #ifdef ARRAY10M
@@ -108,33 +108,30 @@ namespace terrier {
 #ifdef PARTIAL_TEST
 // if not full experiment, set the list of num_inserts, num_threads and num_columns
 #ifdef LOCAL_TEST
-        const uint32_t num_inserts_list_[1] = {10000000};
+        const uint32_t num_inserts_list_[1] = {max_num_inserts_};
         const uint32_t num_threads_list_[1] = {2};
-        const int num_columns_list_[1] = {3};
+        const int num_columns_list_[1] = {max_num_columns_};
 #else
 
-        /*
         const uint32_t num_inserts_list_[21] = {1, 16, 256, 1024, 2048, 4096, 8192, 16384,
                                                32768, 65536, 131072, 262144, 524288,
                                                1048576, 2097152, 4194304, 8388608,
-                                               16777216, 33554432, 67108864, 134217728};
-        const uint32_t num_threads_list_[3] = {4, 8, 12};
-        const int num_columns_list_[3] = {1, 3, 5};
-         */
-        const uint32_t num_inserts_list_[1] = {50000000};
+                                               16777216, 33554432, 67108864};
+        
+        //const uint32_t num_inserts_list_[1] = {max_num_inserts_};
 #ifdef USE_PERF
         const uint32_t num_threads_list_[1] = {8};
 #else
 #ifdef ONE_TEST
-        const uint32_t num_threads_list_[8] = {18,16,12,10,9,6,4,1};
-        //const uint32_t num_threads_list_[17] = {17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1};
-#else
         const uint32_t num_threads_list_[4] = {9,6,4,1};
+        //const uint32_t num_threads_list_[14] = {17,16,15,14,13,12,11,10,9,8,7,6,5,4};
+#else
+        const uint32_t num_threads_list_[8] = {18,16,12,10,9,6,4,1};
         //const uint32_t num_threads_list_[18] = {18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1};
         //const uint32_t num_threads_list_[8] = {7,8,9,10,11,12,13,14};
 #endif
 #endif
-        const int num_columns_list_[1] = {3};
+        const int num_columns_list_[4] = {1, 2, 4, 6};
 #endif
 
 #else
@@ -314,7 +311,6 @@ namespace terrier {
                                 // key_schema_.push_back({catalog::indexkeycol_oid_t(i), type::TypeId::BIGINT, false});
                                 default_schema_ = catalog::IndexSchema(keycols, false, false, false, true);
                                 common::WorkerPool bwtree_thread_pool{num_threads, {}};
-                                common::WorkerPool tpch_thread_pool{max_num_threads_ - num_threads, {}};
 
                                 // BwTreeIndex
                                 storage::index::Index *default_index = (storage::index::IndexBuilder()
@@ -324,15 +320,16 @@ namespace terrier {
                                         .Build();
 
                                 gc_thread_->GetGarbageCollector().RegisterIndexForGC(default_index);
+                                
+#ifndef EMPTY_TEST
+                                common::WorkerPool tpch_thread_pool{max_num_threads_ - num_threads, {}};
                                 bool unfinished = true;
 #ifdef LOOP_TEST
                                 bool always_false = false;
 #endif
 
                                 auto run_my_tpch = [&](uint32_t worker_id, uint32_t core_id) {
-#ifdef EMPTY_TEST
-                                    return;
-#endif
+
 #ifdef MY_PIN_TO_CORE
                                     // Pin to core
                                     cpu_set_t cpu_set;
@@ -388,6 +385,7 @@ namespace terrier {
                                                         &jit_exec_ms_sum_[fn][worker_id],
                                                         &jit_exec_ms_cnt_[fn][worker_id]);
                                 };
+#endif                                
 
                                 auto workload = [&](uint32_t worker_id, uint32_t core_id) {
 #ifdef MY_PIN_TO_CORE
@@ -471,9 +469,11 @@ namespace terrier {
                                     tpch_thread_pool.SubmitTask([i, &run_my_tpch] { run_my_tpch(i, 20); });
                                 }
 #else
+#ifndef EMPTY_TEST
                                 for (uint32_t i = num_threads; i < max_num_threads_; i++) {
                                     tpch_thread_pool.SubmitTask([i, &run_my_tpch] { run_my_tpch(i, core_ids_[i]); });
                                 }
+#endif
 #endif
                                 double elapsed_ms;
                                 {
@@ -485,8 +485,10 @@ namespace terrier {
                                     }
                                     bwtree_thread_pool.WaitUntilAllFinished();
                                 }
+#ifndef EMPTY_TEST
                                 unfinished = false;
                                 tpch_thread_pool.WaitUntilAllFinished();
+#endif
 
                                 gc_thread_->GetGarbageCollector().UnregisterIndexForGC(default_index);
 
