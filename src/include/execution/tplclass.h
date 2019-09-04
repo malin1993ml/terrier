@@ -1,26 +1,3 @@
-//#include <gflags/gflags.h>
-//#include <unistd.h>
-//#include <algorithm>
-//#include <csignal>
-//#include <cstdio>
-//#include <iostream>
-//#include <memory>
-//#include <string>
-//#include <unistd.h>
-//#include <utility>
-//#include <vector>
-//#include "tbb/task_scheduler_init.h"
-//
-//#include "execution/ast/ast_dump.h"
-//#include "execution/exec/execution_context.h"
-//#include "execution/exec/output.h"
-//#include "execution/parsing/parser.h"
-//#include "execution/parsing/scanner.h"
-//#include "execution/sema/error_reporter.h"
-//#include "execution/sema/sema.h"
-//#include "execution/sql/memory_pool.h"
-//#include "execution/sql/table_generator/sample_output.h"
-
 namespace terrier::execution::exec {
     class SampleOutput;
 }
@@ -36,8 +13,6 @@ namespace terrier::execution::vm {
 namespace terrier::execution {
     class TplClass {
     public:
-        static constexpr const char *kExitKeyword = ".exit";
-
         // Terrier objects
         terrier::transaction::TransactionManager * txn_manager_pointer_;
         exec::SampleOutput * sample_output_pointer_;

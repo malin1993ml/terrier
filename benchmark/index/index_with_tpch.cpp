@@ -1,5 +1,5 @@
 // Whether pin to core TODO : discuss later
-//#define MY_PIN_TO_CORE
+#define MY_PIN_TO_CORE
 
 #include <memory>
 #include <numeric>
@@ -152,10 +152,10 @@ namespace terrier {
         void SetUp(const benchmark::State &state) final {
 
             // Switches
-            local_test_ = true;
+            local_test_ = false;
             scan_all_ = false;
             use_perf_ = false;
-            pin_to_core_ = false;
+            pin_to_core_ = true;
             one_always_ = false;
             single_test_ = true;
 
@@ -182,7 +182,7 @@ namespace terrier {
 
                 if (single_test_) {
                     num_inserts_list_.push_back(50000000);
-                    for (int i = 17; i >= 4; i--)
+                    for (int i = 17; i >= 4; i -= 3)
                         num_threads_list_.push_back(i);
                     num_columns_list_.push_back(3);
                 } else {
@@ -241,9 +241,10 @@ namespace terrier {
             for (int table_index = 0; table_index < (int)max_num_threads_ * 2 - 2; table_index++) {
                 delete sql_tables_[table_index];
             }
-            catalog_pointer_->TearDown();
-            //delete catalog_pointer_;
-            execution::ShutdownTplClass();
+            if (workload_type_ == TPCH || workload_type_ == SCAN) {
+                catalog_pointer_->TearDown();
+                execution::ShutdownTplClass();
+            }
             delete gc_thread_;
         }
 

@@ -4,7 +4,6 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 #include "tbb/task_scheduler_init.h"
 
 #include "execution/ast/ast_dump.h"
@@ -30,7 +29,6 @@
 #include "storage/garbage_collector.h"
 
 #include "loggers/loggers_util.h"
-#include "settings/settings_manager.h"
 
 #define __SETTING_GFLAGS_DEFINE__      // NOLINT
 #include "settings/settings_common.h"  // NOLINT
@@ -247,12 +245,18 @@ namespace terrier::execution {
                 "Adaptive Exec.: {} ms, Jit+Exec.: {} ms",
                 parse_ms, typecheck_ms, codegen_ms, interp_exec_ms, adaptive_exec_ms, jit_exec_ms);
         txn_manager_pointer_->Commit(txn, [](void *) {}, nullptr);
-        *interp_exec_ms_sum += interp_exec_ms;
-        *interp_exec_ms_cnt += 1;
-        *adaptive_exec_ms_sum += adaptive_exec_ms;
-        *adaptive_exec_ms_cnt += 1;
-        *jit_exec_ms_sum += jit_exec_ms;
-        *jit_exec_ms_cnt += 1;
+        if (interp) {
+            *interp_exec_ms_sum += interp_exec_ms;
+            *interp_exec_ms_cnt += 1;
+        }
+        if (adaptive) {
+            *adaptive_exec_ms_sum += adaptive_exec_ms;
+            *adaptive_exec_ms_cnt += 1;
+        }
+        if (jit) {
+            *jit_exec_ms_sum += jit_exec_ms;
+            *jit_exec_ms_cnt += 1;
+        }
     }
 
     /**
