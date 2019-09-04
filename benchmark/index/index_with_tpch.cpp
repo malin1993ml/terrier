@@ -49,7 +49,8 @@ namespace terrier {
         bool scan_all_; // Whether to scan whole table; otherwise scan 1M at a time
         bool use_perf_; // Whether to use perf which needs getchar before and after main body
         bool pin_to_core_; // Whether to pin to core
-        bool one_always_; // // Whether always run one extra task
+        bool one_always_; // Whether always run one extra task
+        bool single_test_; // Whether only to run under 1 context, work only if local_test_ is false
 
         enum {EMPTY, LOOP, ARRAY, ARRAY10M, TPCH, SCAN} workload_type_;
 
@@ -156,6 +157,7 @@ namespace terrier {
             use_perf_ = false;
             pin_to_core_ = false;
             one_always_ = false;
+            single_test_ = true;
 
             workload_type_ = TPCH;
 
@@ -178,23 +180,30 @@ namespace terrier {
                 max_num_threads_ = 18;
                 big_number_for_array_test_ = 1 << 28;
 
-                const uint32_t num_inserts_list[20] = {1, 16, 256, 1024, 2048, 4096, 8192, 16384,
-                                                  32768, 65536, 131072, 262144, 524288,
-                                                  1048576, 2097152, 4194304, 8388608,
-                                                  16777216, 33554432, 67108864};
-                for (int i = 0; i < 20; i++)
-                    num_inserts_list_.push_back(num_inserts_list[i]);
-                const uint32_t num_threads_list[8] = {18,16,12,10,9,6,4,1};
-                if (one_always_) {
-                    for (int i = 4; i < 8; i++)
-                        num_threads_list_.push_back(num_threads_list[i]);
+                if (single_test_) {
+                    num_inserts_list_.push_back(50000000);
+                    for (int i = 17; i >= 4; i--)
+                        num_threads_list_.push_back(i);
+                    num_columns_list_.push_back(3);
                 } else {
-                    for (int i = 0; i < 8; i++)
-                        num_threads_list_.push_back(num_threads_list[i]);
+                    const uint32_t num_inserts_list[20] = {1, 16, 256, 1024, 2048, 4096, 8192, 16384,
+                                                           32768, 65536, 131072, 262144, 524288,
+                                                           1048576, 2097152, 4194304, 8388608,
+                                                           16777216, 33554432, 67108864};
+                    for (int i = 0; i < 20; i++)
+                        num_inserts_list_.push_back(num_inserts_list[i]);
+                    const uint32_t num_threads_list[8] = {18, 16, 12, 10, 9, 6, 4, 1};
+                    if (one_always_) {
+                        for (int i = 4; i < 8; i++)
+                            num_threads_list_.push_back(num_threads_list[i]);
+                    } else {
+                        for (int i = 0; i < 8; i++)
+                            num_threads_list_.push_back(num_threads_list[i]);
+                    }
+                    const int num_columns_list[4] = {1, 2, 4, 6};
+                    for (int i = 0; i < 4; i++)
+                        num_columns_list_.push_back(num_columns_list[i]);
                 }
-                const int num_columns_list[4] = {1, 2, 4, 6};
-                for (int i = 0; i < 4; i++)
-                    num_columns_list_.push_back(num_columns_list[i]);
             }
             if (workload_type_ == ARRAY10M)
                 big_number_for_array_test_ = 10000000;
