@@ -1,4 +1,4 @@
-// Whether pin to core TODO : discuss later
+// Whether pin to core, only for GC now TODO : discuss later
 #define MY_PIN_TO_CORE
 
 #include <memory>
@@ -85,7 +85,7 @@ namespace terrier {
         catalog::db_oid_t db_oid_;
         catalog::Catalog *catalog_pointer_;
 
-        void PrepareData() {
+        void GenerateTables() {
             key_permutation_.clear();
             uint32_t total_num_inserts = max_num_inserts_ * 2;
             key_permutation_.resize(total_num_inserts);
@@ -139,7 +139,8 @@ namespace terrier {
                 catalog_pointer_ = new catalog::Catalog(&txn_manager_, &block_store_);
 
                 const char *cmd0 = "tpl";
-                //const char * cmd1 = "-output-name=tpch_q1";
+                // currently cmd1 is not necessary
+                // const char * cmd1 = "-output-name=tpch_q1";
                 const char *cmd2 = "-sql";
                 const char *cmd3 = "../sample_tpl/tpch/q1.tpl";
                 const char *cmd_for_tpch[3] = {cmd0, cmd2, cmd3};
@@ -157,9 +158,9 @@ namespace terrier {
             use_perf_ = false;
             pin_to_core_ = true;
             one_always_ = false;
-            single_test_ = true;
+            single_test_ = false;
 
-            workload_type_ = TPCH;
+            workload_type_ = EMPTY;
 
             // Initialization
             max_times_ = 3;
@@ -234,7 +235,7 @@ namespace terrier {
             gc_period_ = gc_period;
             sql_tables_.resize(max_num_threads_ * 2 - 2);
 
-            PrepareData();
+            GenerateTables();
         }
 
         void TearDown(const benchmark::State &state) final {
@@ -281,6 +282,7 @@ namespace terrier {
         void IndexCreation(uint32_t worker_id, storage::index::Index * default_index,
                            uint32_t num_inserts, int num_columns, uint32_t num_threads, double *insert_time_ms) {
             double thread_run_time_ms = 0;
+
             auto *const key_buffer =
                     common::AllocationUtil::AllocateAligned(
                             default_index->GetProjectedRowInitializer().ProjectedRowSize());
@@ -506,7 +508,7 @@ namespace terrier {
                             sum_insert_time += max_insert_time;
                         }
 
-                        // keysize threadnum insertnum time(s)
+                        // output format: keysize, threadnum, inertnum, time including scan, time without scan (split by \t)
                         std::cout << "bwtree_time" << "\t" << num_columns << "\t" << num_threads << "\t"
                                   << num_inserts << "\t" << sum_time / max_times_ / 1000.0
                                   << "\t" << sum_insert_time / max_times_ / 1000.0 << std::endl;
@@ -530,7 +532,8 @@ namespace terrier {
                                 jit_exec_ms_sum[j] += jit_exec_ms_sum_single[j][i];
                                 jit_exec_ms_cnt[j] += jit_exec_ms_cnt_single[j][i];
                             }
-                        // keysize threadnum insertnum interp_time adaptive_time jit_time(ms)
+
+                        // output format: filename, keysize, threadnum, insertnum, interp_time, adaptive_time, jit_time(ms) (split by \t)
                         for (uint32_t j = 0; j < tpch_filenum_; j++)
                             if (jit_exec_ms_cnt[j] > 0) {
                                 std::cout << tpch_filename_[j] << "\t" << num_columns << "\t" << num_threads
