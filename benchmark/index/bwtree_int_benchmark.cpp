@@ -10,7 +10,7 @@
 namespace terrier {
 
     // Adapted from benchmarks in https://github.com/wangziqi2013/BwTree/blob/master/test/
-
+    // Benchmark of third-party bw-tree insertion time
     class BwTreeIntBenchmark : public benchmark::Fixture {
     public:
         const uint32_t num_keys_ = 50000000; // number of insertion
@@ -19,13 +19,14 @@ namespace terrier {
         const uint32_t max_num_threads_ = 20;
 
         std::vector<int64_t> key_permutation_;
+        std::default_random_engine generator_;
 
         void SetUp(const benchmark::State &state) final {
             key_permutation_.resize(num_keys_);
             for (uint32_t i = 0; i < num_keys_; i++) {
                 key_permutation_[i] = i;
             }
-            std::random_shuffle(key_permutation_.begin(), key_permutation_.end());
+            std::random_shuffle(key_permutation_.begin(), key_permutation_.end(), generator_);
         }
 
         void TearDown(const benchmark::State &state) final {}

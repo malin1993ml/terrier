@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <csignal>
 #include <iostream>
 #include <memory>
@@ -65,7 +64,7 @@ namespace terrier::execution {
                          double *jit_exec_ms_sum,
                          uint64_t *jit_exec_ms_cnt,
                          bool interp, bool adaptive, bool jit) {
-
+        // Mostly copied from tpl.cpp
         auto *txn = txn_manager_pointer_->BeginTransaction();
         auto output_schema = sample_output_pointer_->GetSchema(kOutputName.data());
         exec::OutputPrinter printer(output_schema);
@@ -84,6 +83,7 @@ namespace terrier::execution {
         ast::Context context(&region, &error_reporter);
 
         auto itr = modules_.find(filename);
+        // if this is a new filename, load the TPL file and cache the module in the map
         if (itr == modules_.end()) {
             auto file = llvm::MemoryBuffer::getFile(filename);
             if (std::error_code error = file.getError()) {
@@ -150,6 +150,8 @@ namespace terrier::execution {
             if (kPrintTbc) {
                 bytecode_module->PrettyPrint(&std::cout);
             }
+
+            // Record the module and reset the iterator
             modules_[filename] = std::make_unique<vm::Module>(std::move(bytecode_module));
             itr = modules_.find(filename);
         }
@@ -245,6 +247,7 @@ namespace terrier::execution {
                 "Adaptive Exec.: {} ms, Jit+Exec.: {} ms",
                 parse_ms, typecheck_ms, codegen_ms, interp_exec_ms, adaptive_exec_ms, jit_exec_ms);
         txn_manager_pointer_->Commit(txn, [](void *) {}, nullptr);
+        // update the time
         if (interp) {
             *interp_exec_ms_sum += interp_exec_ms;
             *interp_exec_ms_cnt += 1;
@@ -262,21 +265,14 @@ namespace terrier::execution {
     /**
      * Shutdown all TPL subsystems
      */
-    void ShutdownTplClass() {
+    void TplClass::ShutdownTplClass() {
         vm::LLVMEngine::Shutdown();
         terrier::LoggersUtil::ShutDown();
         scheduler.terminate();
         LOG_INFO("TPL cleanly shutdown ...");
     }
 
-    void TplClassSignalHandler(i32 sig_num) {
-        if (sig_num == SIGINT) {
-            ShutdownTplClass();
-            exit(0);
-        }
-    }
-
-    int InitTplClass(int argc, char **argv,
+    int TplClass::InitTplClass(int argc, char **argv,
                             terrier::transaction::TransactionManager &txn_manager,
                             terrier::storage::BlockStore &block_store,
                             exec::SampleOutput &sample_output,
