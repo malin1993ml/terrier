@@ -18,7 +18,7 @@ namespace terrier::execution {
         terrier::transaction::TransactionManager * txn_manager_pointer_;
         exec::SampleOutput * sample_output_pointer_;
         terrier::catalog::db_oid_t db_oid_;
-        terrier::catalog::Catalog * catalog_pointer_;
+        terrier::catalog::Catalog & catalog_;
         bool *unfinished_;
 
         // Map from file name to its module
@@ -28,12 +28,12 @@ namespace terrier::execution {
         TplClass(terrier::transaction::TransactionManager * txn_manager_pointer,
                  exec::SampleOutput * sample_output_pointer,
                  terrier::catalog::db_oid_t db_oid,
-                 terrier::catalog::Catalog * catalog_pointer,
+                 terrier::catalog::Catalog & catalog,
                  bool *unfinished) :
                 txn_manager_pointer_(txn_manager_pointer),
                 sample_output_pointer_(sample_output_pointer),
                 db_oid_(db_oid),
-                catalog_pointer_(catalog_pointer),
+                catalog_(catalog),
                 unfinished_(unfinished) {}
 
         // Run TPL from a file and record the time, mostly copied from tpl.cpp

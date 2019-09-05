@@ -68,7 +68,7 @@ namespace terrier::execution {
         auto *txn = txn_manager_pointer_->BeginTransaction();
         auto output_schema = sample_output_pointer_->GetSchema(kOutputName.data());
         exec::OutputPrinter printer(output_schema);
-        auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog_pointer_->GetAccessor(txn, db_oid_));
+        auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog_.GetAccessor(txn, db_oid_));
 
         exec::ExecutionContext exec_ctx{db_oid_, txn, printer, output_schema, std::move(accessor)};
 

@@ -1,5 +1,5 @@
 // Whether pin to core, only for GC now. TODO : discuss it later
-#define MY_PIN_TO_CORE
+//#define MY_PIN_TO_CORE
 
 #include <memory>
 #include <numeric>
@@ -87,7 +87,8 @@ namespace terrier {
         std::vector<catalog::col_oid_t> col_oids_;
         execution::exec::SampleOutput sample_output_;
         catalog::db_oid_t db_oid_;
-        catalog::Catalog *catalog_pointer_;
+
+        std::unique_ptr<catalog::Catalog> catalog_pointer_;
 
         // Generate the tables for index creation and TPCH
         // Used in Setup function
@@ -146,7 +147,7 @@ namespace terrier {
 
             // If using TPCH or SCAN workload, initialize the table for tpl queries
             if (workload_type_ == TPCH || workload_type_ == SCAN) {
-                catalog_pointer_ = new catalog::Catalog(&txn_manager_, &block_store_);
+                catalog_pointer_ = std::make_unique<catalog::Catalog>(&txn_manager_, &block_store_);
 
                 const char *cmd0 = "tpl";
                 // currently cmd1 is not necessary
@@ -164,7 +165,7 @@ namespace terrier {
         void SetUp(const benchmark::State &state) final {
 
             // Switches
-            local_test_ = false;
+            local_test_ = true;
             scan_all_ = false;
             use_perf_ = false;
             pin_to_core_ = true;
@@ -181,7 +182,7 @@ namespace terrier {
             num_columns_list_.clear();
 
             if (local_test_) { // local test for PC: use very small #threads, #insertions...
-                max_num_inserts_ = 10000000;
+                max_num_inserts_ = 10000;
                 max_num_threads_ = 4;
                 big_number_for_array_test_ = 1 << 25;
 
@@ -280,12 +281,13 @@ namespace terrier {
 
         // function with a loop of * and +
         void LoopFunction(bool *unfinished) {
-            volatile int x = 1;
+            volatile int x = 1 ;
             while(*unfinished) {
                 for (int i = 0; i < (1 << 30); i++)
                     x = x * 3 + 7;
                 sleep(0);
             }
+            volatile int y UNUSED_ATTRIBUTE = x;
         }
 
         // function with array enumeration
@@ -297,7 +299,9 @@ namespace terrier {
             }
         }
 
-        // function of index insertion for each thread
+        /*
+         * function of index insertion for each thread
+         */
         void IndexInsertion(uint32_t worker_id, storage::index::Index * default_index,
                            uint32_t num_inserts, int num_columns, uint32_t num_threads, double *insert_time_ms) {
             double thread_run_time_ms = 0;
@@ -439,7 +443,6 @@ namespace terrier {
                                 StorageTestUtil::ForceOid(&(keycols[i]), catalog::indexkeycol_oid_t(i));
                             }
                             default_schema_ = catalog::IndexSchema(keycols, false, false, false, true);
-                            common::WorkerPool bwtree_thread_pool{num_threads, {}};
 
                             // BwTreeIndex
                             storage::index::Index *default_index = (storage::index::IndexBuilder()
@@ -450,6 +453,7 @@ namespace terrier {
 
                             gc_thread_->GetGarbageCollector().RegisterIndexForGC(default_index);
 
+                            common::WorkerPool bwtree_thread_pool{num_threads, {}};
                             common::WorkerPool workload_thread_pool{max_num_threads_ - num_threads, {}};
                             bool unfinished = true;
 
@@ -473,7 +477,7 @@ namespace terrier {
                                         return;
                                     default:
                                         execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_,
-                                                                    catalog_pointer_,
+                                                                    *catalog_pointer_,
                                                                     &unfinished);
                                         // the vectors are cleared outside the time loop
                                         for (int fn = worker_id % tpch_filenum_; unfinished; fn = (fn + 1) % tpch_filenum_) {
