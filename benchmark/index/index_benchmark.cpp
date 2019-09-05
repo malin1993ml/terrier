@@ -608,7 +608,7 @@ namespace terrier {
                                 other_thread_pool.SubmitTask([i, core_id, &run_other] { run_other(i, core_id); });
                             } else if (other_type_ != EMPTY) {
                                 for (uint32_t i = 0; i < max_num_threads_ - num_threads; i++) {
-                                    uint32_t core_id = core_ids_[i];
+                                    uint32_t core_id = core_ids_[i + num_threads];
                                     other_thread_pool.SubmitTask(
                                             [i, core_id, &run_other] { run_other(i, core_id); });
                                 }
