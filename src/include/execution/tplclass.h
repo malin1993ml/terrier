@@ -11,7 +11,9 @@ namespace terrier::execution::vm {
 }
 
 namespace terrier::execution {
-    // Use this class to store the setups of TPCH threads and cache the modules
+    /*
+     * Use this class to store the setups of TPCH threads and cache the modules
+     */
     class TplClass {
     public:
         // Terrier objects
@@ -24,7 +26,9 @@ namespace terrier::execution {
         // Map from file name to its module
         std::map <std::string, std::unique_ptr <vm::Module> > modules_;
 
-        // Constructor
+        /*
+         * Constructor
+         */
         TplClass(terrier::transaction::TransactionManager * txn_manager_pointer,
                  exec::SampleOutput * sample_output_pointer,
                  terrier::catalog::db_oid_t db_oid,
@@ -36,7 +40,9 @@ namespace terrier::execution {
                 catalog_(catalog),
                 unfinished_(unfinished) {}
 
-        // Run TPL from a file and record the time, mostly copied from tpl.cpp
+        /*
+         * Run TPL from a file and record the time, mostly copied from tpl.cpp
+         */
         void RunFile(const std::string &filename,
                 double *interp_exec_ms_sum,
                 uint64_t *interp_exec_ms_cnt,
@@ -46,7 +52,9 @@ namespace terrier::execution {
                 uint64_t *jit_exec_ms_cnt,
                 bool interp, bool adaptive, bool jit);
 
-        // Signal handler
+        /*
+         * Signal handler
+         */
         static void TplClassSignalHandler(i32 sig_num) {
             if (sig_num == SIGINT) {
                 ShutdownTplClass();
@@ -54,7 +62,9 @@ namespace terrier::execution {
             }
         }
 
-        // Initialize the Terrier objects for TPCH
+        /*
+         * Initialize the Terrier objects for TPCH
+         */
         static int InitTplClass(int argc, char **argv,
                          terrier::transaction::TransactionManager &txn_manager,
                          terrier::storage::BlockStore &block_store,
@@ -62,7 +72,10 @@ namespace terrier::execution {
                          terrier::catalog::db_oid_t &db_oid,
                          terrier::catalog::Catalog &catalog);
 
-        // Shut down TPCH
+
+        /*
+         * Shutdown all TPL subsystems
+         */
         static void ShutdownTplClass();
     };
 }  // namespace tpl

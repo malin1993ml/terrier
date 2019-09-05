@@ -262,9 +262,6 @@ namespace terrier::execution {
         }
     }
 
-    /**
-     * Shutdown all TPL subsystems
-     */
     void TplClass::ShutdownTplClass() {
         vm::LLVMEngine::Shutdown();
         terrier::LoggersUtil::ShutDown();
