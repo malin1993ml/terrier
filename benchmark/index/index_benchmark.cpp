@@ -326,7 +326,6 @@ namespace terrier {
                 one_always_ = false;
                 max_num_threads_ = 17;
                 tpch_number_ = 0;
-                RunBenchmark();
             }
         }
 
