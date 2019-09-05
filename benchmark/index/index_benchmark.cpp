@@ -256,7 +256,7 @@ namespace terrier {
             need_index_ = true;
             need_tpch_ = true;
 
-            other_type_ = INDEX; // currently for UTPCH, use INDEX here
+            other_type_ = INDEX;
             workload_type_ = UTPCH;
 
             // Initialization of upper bounds and lists
@@ -724,6 +724,7 @@ namespace terrier {
                 case UTPCH:
                     if (single_test_) {
                         RunBenchmark();
+                        max_num_threads_ = 18; // to delete all the tables
                         break;
                     }
                     std::cout << "Empty" << std::endl;
@@ -761,6 +762,7 @@ namespace terrier {
                             RunBenchmark();
                         }
                     }
+                    max_num_threads_ = 18; // to delete all the tables
             }
         }
     }
