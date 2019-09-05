@@ -54,12 +54,15 @@ namespace terrier {
         bool pin_to_core_; // Whether to pin to core
         bool one_always_; // Whether always run a extra task on core 20, so always use hyper-threading
         bool single_test_; // Whether run a small test, work only if local_test_ is false
+        bool need_index_; // Whether to use index
+        bool need_tpch_; // Whether to use TPCH
 
         enum other_types {EMPTY, LOOP, ARRAY, ARRAY10M, INDEX, TPCH, SCAN} other_type_;
         std::string type_names_[7] = {"EMPTY", "LOOP", "ARRAY", "ARRAY10M", "INDEX", "TPCH", "SCAN"};
         enum workload_types {UINDEX, UTPCH} workload_type_;
         std::vector <int> tpch_list_;
         int tpch_number_;
+        int tpch_repeated_times_;
 
         // Upper bounds
         int max_times_; // run how many experiments and record average time
@@ -72,7 +75,8 @@ namespace terrier {
         uint32_t tpch_filenum_;
 
         uint32_t fixed_core_id_;
-        std::string scan_filename;
+        std::string scan_filename_;
+        std::vector <bool> tpch_mode_;
 
         // List of values
         std::vector <std::string> tpch_filename_;
@@ -249,6 +253,8 @@ namespace terrier {
             pin_to_core_ = true;
             one_always_ = false;
             single_test_ = true;
+            need_index_ = true;
+            need_tpch_ = true;
 
             other_type_ = INDEX; // currently for UTPCH, use INDEX here
             workload_type_ = UTPCH;
@@ -283,10 +289,14 @@ namespace terrier {
             tpch_filenum_ = 4;
             for (int i = 0; i < 4; i++)
                 tpch_filename_.push_back(filenames[i]);
-            scan_filename = "../sample_tpl/scanall.tpl";
-
+            scan_filename_ = "../sample_tpl/scanall.tpl";
             for (int i = 0; i < 4; i++)
                 tpch_list_.push_back(i);
+            tpch_mode_.resize(3);
+            tpch_mode_[0] = false; // interpret
+            tpch_mode_[1] = false; // adaptive
+            tpch_mode_[2] = true; // jit
+            tpch_repeated_times_ = 1;
 
             // set up sequence of cores and GC
             std::chrono::milliseconds gc_period{10};
@@ -295,10 +305,10 @@ namespace terrier {
             sql_tables_.resize(max_num_threads_ * 2 - 2);
 
             // If using INDEX workload, generate the tables
-            if (other_type_ == INDEX || workload_type_ == UINDEX)
+            if (need_index_)
                 GenerateTablesForIndex();
             // If using TPCH or SCAN workload, initialize the table for tpl queries
-            if (other_type_ == TPCH || other_type_ == SCAN || workload_type_ == UTPCH) {
+            if (need_tpch_) {
                 catalog_pointer_ = std::make_unique<catalog::Catalog>(&txn_manager_, &block_store_);
                 const char *cmd0 = "tpl";
                 // currently cmd1 is not necessary
@@ -310,6 +320,14 @@ namespace terrier {
                 execution::TplClass::InitTplClass(3, (char **) cmd_for_tpch, txn_manager_, block_store_,
                                                   sample_output_, db_oid_, *catalog_pointer_);
             }
+
+            if (workload_type_ == UTPCH && single_test_ && !local_test_) { // Small test for correctness of code
+                other_type_ = INDEX;
+                one_always_ = false;
+                max_num_threads_ = 17;
+                tpch_number_ = 0;
+                RunBenchmark();
+            }
         }
 
         /*
@@ -319,7 +337,7 @@ namespace terrier {
             for (int table_index = 0; table_index < (int)max_num_threads_ * 2 - 2; table_index++) {
                 delete sql_tables_[table_index];
             }
-            if (other_type_ == TPCH || other_type_ == SCAN) {
+            if (need_tpch_) {
                 catalog_pointer_->TearDown();
                 execution::TplClass::ShutdownTplClass();
             }
@@ -521,10 +539,13 @@ namespace terrier {
 
                         // Repeat the experiments for several times
                         for (int times = 1; times <= max_times_; times++) {
-                            storage::index::Index * default_index = IndexInit(num_columns);
-                            gc_thread_->GetGarbageCollector().RegisterIndexForGC(default_index);
+                            storage::index::Index *default_index;
+                            if (workload_type_ == UINDEX) {
+                                default_index = IndexInit(num_columns);
+                                gc_thread_->GetGarbageCollector().RegisterIndexForGC(default_index);
+                            }
 
-                            common::WorkerPool bwtree_thread_pool{num_threads, {}};
+                            common::WorkerPool workload_thread_pool{num_threads, {}};
                             common::WorkerPool other_thread_pool{max_num_threads_ - num_threads, {}};
                             bool unfinished = true;
 
@@ -567,12 +588,12 @@ namespace terrier {
                                                                                                       tpch_filenum_) {
                                                 my_tpch.RunFile(tpch_filename_[fn],
                                                                 &x1, &y1, &x2, &y2, &x3, &y3,
-                                                                false, false, true);
+                                                                tpch_mode_[0], tpch_mode_[1], tpch_mode_[2]);
                                             }
                                         } else {
-                                            my_tpch.RunFile(scan_filename,
+                                            my_tpch.RunFile(scan_filename_,
                                                             &x1, &y1, &x2, &y2, &x3, &y3,
-                                                            false, false, true);
+                                                            tpch_mode_[0], tpch_mode_[1], tpch_mode_[2]);
                                         }
                                 }
                             };
@@ -590,14 +611,16 @@ namespace terrier {
                                         execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_,
                                                                     *catalog_pointer_,
                                                                     &unfinished);
-                                        my_tpch.RunFile(tpch_filename_[tpch_number_],
-                                                        &interp_exec_ms_sum_single[tpch_number_][worker_id],
-                                                        &interp_exec_ms_cnt_single[tpch_number_][worker_id],
-                                                        &adaptive_exec_ms_sum_single[tpch_number_][worker_id],
-                                                        &adaptive_exec_ms_cnt_single[tpch_number_][worker_id],
-                                                        &jit_exec_ms_sum_single[tpch_number_][worker_id],
-                                                        &jit_exec_ms_cnt_single[tpch_number_][worker_id],
-                                                        false, false, true);
+                                        for (int i = 0; i < tpch_repeated_times_; i++) {
+                                            my_tpch.RunFile(tpch_filename_[tpch_number_],
+                                                            &interp_exec_ms_sum_single[tpch_number_][worker_id],
+                                                            &interp_exec_ms_cnt_single[tpch_number_][worker_id],
+                                                            &adaptive_exec_ms_sum_single[tpch_number_][worker_id],
+                                                            &adaptive_exec_ms_cnt_single[tpch_number_][worker_id],
+                                                            &jit_exec_ms_sum_single[tpch_number_][worker_id],
+                                                            &jit_exec_ms_cnt_single[tpch_number_][worker_id],
+                                                            tpch_mode_[0], tpch_mode_[1], tpch_mode_[2]);
+                                        }
                                 }
                             };
 
@@ -621,15 +644,17 @@ namespace terrier {
                                 // run the workload
                                 for (uint32_t i = 0; i < num_threads; i++) {
                                     uint32_t core_id = core_ids_[i];
-                                    bwtree_thread_pool.SubmitTask([i, core_id, &workload] { workload(i, core_id); });
+                                    workload_thread_pool.SubmitTask([i, core_id, &workload] { workload(i, core_id); });
                                 }
-                                bwtree_thread_pool.WaitUntilAllFinished();
+                                workload_thread_pool.WaitUntilAllFinished();
                             }
                             unfinished = false;
                             other_thread_pool.WaitUntilAllFinished();
 
-                            gc_thread_->GetGarbageCollector().UnregisterIndexForGC(default_index);
-                            delete default_index;
+                            if (workload_type_ == UINDEX) {
+                                gc_thread_->GetGarbageCollector().UnregisterIndexForGC(default_index);
+                                delete default_index;
+                            }
 
                             // Record the time
                             sum_time += elapsed_ms;
@@ -698,6 +723,10 @@ namespace terrier {
                     RunBenchmark();
                     break;
                 case UTPCH:
+                    if (single_test_) {
+                        RunBenchmark();
+                        break;
+                    }
                     std::cout << "Empty" << std::endl;
                     other_type_ = EMPTY;
                     one_always_ = false;
