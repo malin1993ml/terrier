@@ -221,7 +221,7 @@ namespace terrier {
             if (local_test_) { // local test for PC: use very small #threads, #insertions...
                 max_num_inserts_ = 10000;
             } else { // for the server
-                max_num_inserts_ = 10000000;
+                max_num_inserts_ = 1000000;
             }
             num_inserts_list_.push_back(max_num_inserts_);
             num_threads_list_.push_back(1);
