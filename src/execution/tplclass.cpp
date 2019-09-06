@@ -269,12 +269,7 @@ namespace terrier::execution {
         LOG_INFO("TPL cleanly shutdown ...");
     }
 
-    int TplClass::InitTplClass(int argc, char **argv,
-                            terrier::transaction::TransactionManager &txn_manager,
-                            terrier::storage::BlockStore &block_store,
-                            exec::SampleOutput &sample_output,
-                            terrier::catalog::db_oid_t &db_oid,
-                            terrier::catalog::Catalog &catalog) {  // NOLINT (bugprone-exception-escape)
+    int TplClass::InitTplClass(int argc, char **argv) {  // NOLINT (bugprone-exception-escape)
 
         // Parse options
         llvm::cl::HideUnrelatedOptions(kTplOptionsCategory);
@@ -303,6 +298,16 @@ namespace terrier::execution {
         EXECUTION_LOG_INFO("\n{}", terrier::execution::CpuInfo::Instance()->PrettyPrintInfo());
         EXECUTION_LOG_INFO("Welcome to TPL (ver. {}.{})", TPL_VERSION_MAJOR, TPL_VERSION_MINOR);
 
+        return 0;
+    }
+
+    void TplClass::BuildDb(terrier::transaction::TransactionManager &txn_manager,
+                           terrier::storage::BlockStore &block_store,
+                           exec::SampleOutput &sample_output,
+                           terrier::catalog::db_oid_t &db_oid,
+                           terrier::catalog::Catalog &catalog,
+                           std::string db_name, std::string table_root) {
+
         auto txn = txn_manager.BeginTransaction();
 
         // Get the correct output format for this test
@@ -310,7 +315,7 @@ namespace terrier::execution {
         auto output_schema = sample_output.GetSchema(kOutputName.data());
 
         // Make the catalog accessor
-        db_oid = catalog.CreateDatabase(txn, "test_db", true);
+        db_oid = catalog.CreateDatabase(txn, db_name, true);
         auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
         auto ns_oid = accessor->GetDefaultNamespace();
 
@@ -322,12 +327,11 @@ namespace terrier::execution {
         // TODO(Amadou): Read this in from a directory. That would require boost or experimental C++ though
         sql::TableGenerator table_generator{&exec_ctx, &block_store, ns_oid};
         table_generator.GenerateTestTables();
-        table_generator.GenerateTPCHTables("../sample_tpl/tables/");
+        table_generator.GenerateTPCHTables(table_root);
+        // Types are the same for tables of all scale factors
         table_generator.GenerateTableFromFile("../sample_tpl/tables/types1.schema", "../sample_tpl/tables/types1.data");
 
         txn_manager.Commit(txn, [](void *) {}, nullptr);
-
-        return 0;
     }
 
 }  // namespace tpl

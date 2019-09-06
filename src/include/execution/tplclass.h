@@ -62,16 +62,17 @@ namespace terrier::execution {
             }
         }
 
+        static void BuildDb(terrier::transaction::TransactionManager &txn_manager,
+                            terrier::storage::BlockStore &block_store,
+                            exec::SampleOutput &sample_output,
+                            terrier::catalog::db_oid_t &db_oid,
+                            terrier::catalog::Catalog &catalog,
+                            std::string db_name, std::string table_root);
+
         /*
          * Initialize the Terrier objects for TPCH
          */
-        static int InitTplClass(int argc, char **argv,
-                         terrier::transaction::TransactionManager &txn_manager,
-                         terrier::storage::BlockStore &block_store,
-                         exec::SampleOutput &sample_output,
-                         terrier::catalog::db_oid_t &db_oid,
-                         terrier::catalog::Catalog &catalog);
-
+        static int InitTplClass(int argc, char **argv);
 
         /*
          * Shutdown all TPL subsystems

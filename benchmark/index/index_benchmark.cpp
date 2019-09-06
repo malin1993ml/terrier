@@ -101,6 +101,10 @@ namespace terrier {
         execution::exec::SampleOutput sample_output_;
         catalog::db_oid_t db_oid_;
 
+        // For TPCH benchmark, use another table
+        execution::exec::SampleOutput sample_output_benchmark_;
+        catalog::db_oid_t db_oid_benchmark_;
+
         std::unique_ptr<catalog::Catalog> catalog_pointer_;
 
         /*
@@ -317,15 +321,21 @@ namespace terrier {
                 const char *cmd3 = "../sample_tpl/tpch/q1.tpl";
                 const char *cmd_for_tpch[3] = {cmd0, cmd2, cmd3};
 
-                execution::TplClass::InitTplClass(3, (char **) cmd_for_tpch, txn_manager_, block_store_,
-                                                  sample_output_, db_oid_, *catalog_pointer_);
+                execution::TplClass::InitTplClass(3, (char **) cmd_for_tpch);
+                execution::TplClass::BuildDb(txn_manager_, block_store_, sample_output_, db_oid_,
+                        *catalog_pointer_, "other_db", "../sample_tpl/tables/");
+                if (workload_type_ == UTPCH) {
+                    execution::TplClass::BuildDb(txn_manager_, block_store_, sample_output_benchmark_, db_oid_benchmark_,
+                                                 *catalog_pointer_, "benchmark_db", "../sample_tpl/benchmark_tables/");
+                }
             }
 
             if (workload_type_ == UTPCH && single_test_ && !local_test_) { // Small test for correctness of code
-                other_type_ = INDEX;
+                other_type_ = SCAN;
                 one_always_ = false;
-                max_num_threads_ = 17;
+                max_num_threads_ = 18;
                 tpch_number_ = 0;
+                tpch_repeated_times_ = 5;
             }
         }
 
@@ -577,8 +587,7 @@ namespace terrier {
                                         return;
                                     default:
                                         execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_,
-                                                                    *catalog_pointer_,
-                                                                    &unfinished);
+                                                                    *catalog_pointer_, &unfinished);
                                         // useless variables
                                         double x1, x2, x3;
                                         uint64_t y1, y2, y3;
@@ -607,9 +616,8 @@ namespace terrier {
                                                        &insert_time_ms[worker_id]);
                                         return;
                                     case UTPCH:
-                                        execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_,
-                                                                    *catalog_pointer_,
-                                                                    &unfinished);
+                                        execution::TplClass my_tpch(&txn_manager_, &sample_output_benchmark_, db_oid_benchmark_,
+                                                                    *catalog_pointer_, &unfinished);
                                         for (int i = 0; i < tpch_repeated_times_; i++) {
                                             my_tpch.RunFile(tpch_filename_[tpch_number_],
                                                             &interp_exec_ms_sum_single[tpch_number_][worker_id],
