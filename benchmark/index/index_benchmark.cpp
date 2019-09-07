@@ -43,6 +43,7 @@ namespace terrier {
 
     /*
      * Benchmark for index creation time with/without other workloads
+     * Now also support TPCH benchmark
      */
     class IndexBenchmark : public benchmark::Fixture {
 
@@ -55,7 +56,7 @@ namespace terrier {
         bool one_always_; // Whether always run a extra task on core 20, so always use hyper-threading
         bool single_test_; // Whether run a small test, work only if local_test_ is false
         bool need_index_; // Whether to use index
-        bool need_tpch_; // Whether to use TPCH
+        bool need_tpch_; // Whether to use TPCH as other workload
 
         enum other_types {EMPTY, LOOP, ARRAY, ARRAY10M, INDEX, TPCH, SCAN} other_type_;
         std::string type_names_[7] = {"EMPTY", "LOOP", "ARRAY", "ARRAY10M", "INDEX", "TPCH", "SCAN"};
@@ -312,7 +313,7 @@ namespace terrier {
             if (need_index_)
                 GenerateTablesForIndex();
             // If using TPCH or SCAN workload, initialize the table for tpl queries
-            if (need_tpch_) {
+            if (need_tpch_ || workload_type_ == UTPCH) {
                 catalog_pointer_ = std::make_unique<catalog::Catalog>(&txn_manager_, &block_store_);
                 const char *cmd0 = "tpl";
                 // currently cmd1 is not necessary
@@ -322,12 +323,14 @@ namespace terrier {
                 const char *cmd_for_tpch[3] = {cmd0, cmd2, cmd3};
 
                 execution::TplClass::InitTplClass(3, (char **) cmd_for_tpch);
+            }
+            if (need_tpch_) {
                 execution::TplClass::BuildDb(txn_manager_, block_store_, sample_output_, db_oid_,
-                        *catalog_pointer_, "other_db", "../sample_tpl/tables/");
-                if (workload_type_ == UTPCH) {
-                    execution::TplClass::BuildDb(txn_manager_, block_store_, sample_output_benchmark_, db_oid_benchmark_,
-                                                 *catalog_pointer_, "benchmark_db", "../sample_tpl/benchmark_tables/");
-                }
+                                             *catalog_pointer_, "other_db", "../sample_tpl/tables/");
+            }
+            if (workload_type_ == UTPCH) {
+                execution::TplClass::BuildDb(txn_manager_, block_store_, sample_output_benchmark_, db_oid_benchmark_,
+                                             *catalog_pointer_, "benchmark_db", "../sample_tpl/benchmark_tables/");
             }
 
             if (workload_type_ == UTPCH && single_test_ && !local_test_) { // Small test for correctness of code
@@ -589,8 +592,8 @@ namespace terrier {
                                         execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_,
                                                                     *catalog_pointer_, &unfinished);
                                         // useless variables
-                                        double x1, x2, x3;
-                                        uint64_t y1, y2, y3;
+                                        double x1 = 0, x2 = 0, x3 = 0;
+                                        uint64_t y1 = 0, y2 = 0, y3 = 0;
                                         if (other_type_ == TPCH) {
                                             for (int fn = worker_id % tpch_filenum_; unfinished; fn = (fn + 1) %
                                                                                                       tpch_filenum_) {
@@ -599,9 +602,10 @@ namespace terrier {
                                                                 tpch_mode_[0], tpch_mode_[1], tpch_mode_[2]);
                                             }
                                         } else {
-                                            my_tpch.RunFile(scan_filename_,
-                                                            &x1, &y1, &x2, &y2, &x3, &y3,
-                                                            tpch_mode_[0], tpch_mode_[1], tpch_mode_[2]);
+                                            while (unfinished)
+                                                my_tpch.RunFile(scan_filename_,
+                                                                &x1, &y1, &x2, &y2, &x3, &y3,
+                                                                tpch_mode_[0], tpch_mode_[1], tpch_mode_[2]);
                                         }
                                 }
                             };
