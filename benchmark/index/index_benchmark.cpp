@@ -217,9 +217,9 @@ namespace terrier {
         }
 
         /*
-         * Set upper bounds and lists for TPCH benchmark
+         * Set upper bounds and lists for other benchmark
          */
-        void SetTPCH() {
+        void SetOtherBenchmark() {
             max_num_columns_ = 6;
             num_inserts_list_.clear();
             num_columns_list_.clear();
@@ -254,7 +254,7 @@ namespace terrier {
             // Switches
             local_test_ = false;
             scan_all_ = false;
-            use_perf_ = false;
+            use_perf_ = true;
             pin_to_core_ = true;
             one_always_ = false;
             single_test_ = true;
@@ -262,7 +262,7 @@ namespace terrier {
             need_tpch_ = true;
 
             other_type_ = INDEX;
-            workload_type_ = UTPCH;
+            workload_type_ = USCAN;
 
             // Initialization of upper bounds and lists
             max_times_ = 3;
@@ -279,8 +279,8 @@ namespace terrier {
                 big_number_for_array_test_ = 10000000;
             if (workload_type_ == UINDEX)
                 SetIndex();
-            else if (workload_type_ == UTPCH || workload_type_ == USCAN)
-                SetTPCH();
+            else
+                SetOtherBenchmark();
 
             num_inserts_per_table_ = max_num_inserts_ / max_num_threads_ + 1;
             scan_size_kb_ = 1000; // useless if scan_all_ is true
