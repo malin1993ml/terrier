@@ -60,7 +60,7 @@ namespace terrier {
 
         enum other_types {EMPTY, LOOP, ARRAY, ARRAY10M, INDEX, TPCH, SCAN} other_type_;
         std::string type_names_[7] = {"EMPTY", "LOOP", "ARRAY", "ARRAY10M", "INDEX", "TPCH", "SCAN"};
-        enum workload_types {UINDEX, UTPCH} workload_type_;
+        enum workload_types {UINDEX, UTPCH, ULOOP, USCAN} workload_type_;
         std::vector <int> tpch_list_;
         int tpch_number_;
         int tpch_repeated_times_;
@@ -279,7 +279,7 @@ namespace terrier {
                 big_number_for_array_test_ = 10000000;
             if (workload_type_ == UINDEX)
                 SetIndex();
-            else
+            else if (workload_type_ == UTPCH || workload_type_ == USCAN)
                 SetTPCH();
 
             num_inserts_per_table_ = max_num_inserts_ / max_num_threads_ + 1;
@@ -313,7 +313,7 @@ namespace terrier {
             if (need_index_)
                 GenerateTablesForIndex();
             // If using TPCH or SCAN workload, initialize the table for tpl queries
-            if (need_tpch_ || workload_type_ == UTPCH) {
+            if (need_tpch_ || workload_type_ == UTPCH || workload_type_ == USCAN) {
                 catalog_pointer_ = std::make_unique<catalog::Catalog>(&txn_manager_, &block_store_);
                 const char *cmd0 = "tpl";
                 // currently cmd1 is not necessary
@@ -324,21 +324,21 @@ namespace terrier {
 
                 execution::TplClass::InitTplClass(3, (char **) cmd_for_tpch);
             }
+            if (workload_type_ == UTPCH || workload_type_ == USCAN) {
+                execution::TplClass::BuildDb(txn_manager_, block_store_, sample_output_benchmark_, db_oid_benchmark_,
+                                             *catalog_pointer_, "benchmark_db", "../sample_tpl/benchmark_tables/");
+            }
             if (need_tpch_) {
                 execution::TplClass::BuildDb(txn_manager_, block_store_, sample_output_, db_oid_,
                                              *catalog_pointer_, "other_db", "../sample_tpl/tables/");
             }
-            if (workload_type_ == UTPCH) {
-                execution::TplClass::BuildDb(txn_manager_, block_store_, sample_output_benchmark_, db_oid_benchmark_,
-                                             *catalog_pointer_, "benchmark_db", "../sample_tpl/benchmark_tables/");
-            }
 
-            if (workload_type_ == UTPCH && single_test_ && !local_test_) { // Small test for correctness of code
-                other_type_ = SCAN;
+            if ((workload_type_ == UTPCH || workload_type_ == ULOOP || workload_type_ == USCAN) && single_test_ && !local_test_) { // Small test for correctness of code
+                other_type_ = EMPTY;
                 one_always_ = false;
                 max_num_threads_ = 18;
                 tpch_number_ = 0;
-                tpch_repeated_times_ = 5;
+                tpch_repeated_times_ = 1;
             }
         }
 
@@ -376,11 +376,11 @@ namespace terrier {
          */
         void LoopFunction(bool *unfinished) {
             volatile int x = 1 ;
-            while(*unfinished) {
+            do {
                 for (int i = 0; i < (1 << 30); i++)
                     x = x * 3 + 7;
                 sleep(0);
-            }
+            } while(*unfinished);
             volatile int y UNUSED_ATTRIBUTE = x;
         }
 
@@ -618,9 +618,10 @@ namespace terrier {
                                     case UINDEX:
                                         IndexInsertion(worker_id, default_index, num_inserts, num_columns, num_threads,
                                                        &insert_time_ms[worker_id]);
-                                        return;
-                                    case UTPCH:
-                                        execution::TplClass my_tpch(&txn_manager_, &sample_output_benchmark_, db_oid_benchmark_,
+                                        break;
+                                    case UTPCH: {
+                                        execution::TplClass my_tpch(&txn_manager_, &sample_output_benchmark_,
+                                                                    db_oid_benchmark_,
                                                                     *catalog_pointer_, &unfinished);
                                         for (int i = 0; i < tpch_repeated_times_; i++) {
                                             my_tpch.RunFile(tpch_filename_[tpch_number_],
@@ -632,6 +633,27 @@ namespace terrier {
                                                             &jit_exec_ms_cnt_single[tpch_number_][worker_id],
                                                             tpch_mode_[0], tpch_mode_[1], tpch_mode_[2]);
                                         }
+                                    }
+                                        break;
+                                    case USCAN: {
+                                        execution::TplClass my_tpch(&txn_manager_, &sample_output_benchmark_,
+                                                                    db_oid_benchmark_,
+                                                                    *catalog_pointer_, &unfinished);
+                                        // record time in interp_exec_ms_sum_single[0] and so on...
+                                        for (int i = 0; i < tpch_repeated_times_; i++) {
+                                            my_tpch.RunFile(scan_filename_,
+                                                            &interp_exec_ms_sum_single[0][worker_id],
+                                                            &interp_exec_ms_cnt_single[0][worker_id],
+                                                            &adaptive_exec_ms_sum_single[0][worker_id],
+                                                            &adaptive_exec_ms_cnt_single[0][worker_id],
+                                                            &jit_exec_ms_sum_single[0][worker_id],
+                                                            &jit_exec_ms_cnt_single[0][worker_id],
+                                                            tpch_mode_[0], tpch_mode_[1], tpch_mode_[2]);
+                                        }
+                                    }
+                                    case ULOOP:
+                                        bool always_false = false;
+                                        LoopFunction(&always_false);
                                 }
                             };
 
@@ -731,6 +753,8 @@ namespace terrier {
         for (auto _ : state) {
             switch (workload_type_) {
                 case UINDEX:
+                case ULOOP:
+                case USCAN:
                     RunBenchmark();
                     break;
                 case UTPCH:
@@ -775,6 +799,7 @@ namespace terrier {
                         }
                     }
                     max_num_threads_ = 18; // to delete all the tables
+                    break;
             }
         }
     }
