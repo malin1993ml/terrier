@@ -567,18 +567,18 @@ namespace terrier {
                                     MyPinToCore(core_id);
                                 switch (other_type_) {
                                     case EMPTY:
-                                        return;
+                                        break;
                                     case LOOP:
                                         LoopFunction(&unfinished);
-                                        return;
+                                        break;
                                     case ARRAY:
                                         ArrayFunction(&unfinished, my_arrays[worker_id], big_number_for_array_test_);
-                                        return;
+                                        break;
                                     case ARRAY10M:
                                         // the total size fo arrays is 10M
                                         ArrayFunction(&unfinished, my_arrays[worker_id], big_number_for_array_test_ /
                                                                                          (max_num_threads_ - num_threads));
-                                        return;
+                                        break;
                                     case INDEX:
                                         while(unfinished) {
                                             storage::index::Index * my_index = IndexInit(num_columns);
@@ -587,7 +587,7 @@ namespace terrier {
                                             gc_thread_->GetGarbageCollector().UnregisterIndexForGC(my_index);
                                             delete my_index;
                                         }
-                                        return;
+                                        break;
                                     default:
                                         execution::TplClass my_tpch(&txn_manager_, &sample_output_, db_oid_,
                                                                     *catalog_pointer_, &unfinished);
@@ -607,6 +607,7 @@ namespace terrier {
                                                                 &x1, &y1, &x2, &y2, &x3, &y3,
                                                                 tpch_mode_[0], tpch_mode_[1], tpch_mode_[2]);
                                         }
+                                        break;
                                 }
                             };
 
@@ -651,9 +652,11 @@ namespace terrier {
                                                             tpch_mode_[0], tpch_mode_[1], tpch_mode_[2]);
                                         }
                                     }
+                                        break;
                                     case ULOOP:
                                         bool always_false = false;
                                         LoopFunction(&always_false);
+                                        break;
                                 }
                             };
 
