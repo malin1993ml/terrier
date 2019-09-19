@@ -1,3 +1,5 @@
+#include <atomic>
+
 namespace terrier::execution::exec {
     class SampleOutput;
 }
@@ -21,7 +23,7 @@ namespace terrier::execution {
         exec::SampleOutput * sample_output_pointer_;
         terrier::catalog::db_oid_t db_oid_;
         terrier::catalog::Catalog & catalog_;
-        bool *unfinished_;
+        std::atomic <bool> *unfinished_;
 
         // Map from file name to its module
         std::map <std::string, std::unique_ptr <vm::Module> > modules_;
@@ -33,7 +35,7 @@ namespace terrier::execution {
                  exec::SampleOutput * sample_output_pointer,
                  terrier::catalog::db_oid_t db_oid,
                  terrier::catalog::Catalog & catalog,
-                 bool *unfinished) :
+                 std::atomic <bool> *unfinished) :
                 txn_manager_pointer_(txn_manager_pointer),
                 sample_output_pointer_(sample_output_pointer),
                 db_oid_(db_oid),

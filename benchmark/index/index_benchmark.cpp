@@ -1,6 +1,7 @@
 // Whether pin to core, only for GC now. TODO : discuss it later
 #define MY_PIN_TO_CORE
 
+#include <atomic>
 #include <memory>
 #include <numeric>
 #include <sched.h>
@@ -374,12 +375,12 @@ namespace terrier {
         /*
          * function with a loop of * and +
          */
-        void LoopFunction(bool *unfinished) {
+        void LoopFunction(std::atomic <bool> *unfinished) {
             volatile int x = 1 ;
             do {
                 for (int i = 0; i < (1 << 30); i++)
                     x = x * 3 + 7;
-                sleep(0);
+                //sleep(0);
             } while(*unfinished);
             volatile int y UNUSED_ATTRIBUTE = x;
         }
@@ -387,11 +388,11 @@ namespace terrier {
         /*
          * function with array enumeration
          */
-        void ArrayFunction(bool *unfinished, std::vector <int> & my_array, int array_length) {
+        void ArrayFunction(std::atomic <bool> *unfinished, std::vector <int> & my_array, int array_length) {
             while(*unfinished) {
                 for (int i = 0; i < array_length; i++)
                     my_array[i] = my_array[i] * 3 + 7;
-                sleep(0);
+                //sleep(0);
             }
         }
 
@@ -559,7 +560,7 @@ namespace terrier {
 
                             common::WorkerPool workload_thread_pool{num_threads, {}};
                             common::WorkerPool other_thread_pool{max_num_threads_ - num_threads, {}};
-                            bool unfinished = true;
+                            std::atomic <bool> unfinished = true;
 
                             // Workload for LOOP, ARRAY, ARRAY10M, TPCH or SCAN
                             auto run_other = [&](uint32_t worker_id, uint32_t core_id) {
@@ -654,7 +655,7 @@ namespace terrier {
                                     }
                                         break;
                                     case ULOOP:
-                                        bool always_false = false;
+                                        std::atomic <bool> always_false = false;
                                         LoopFunction(&always_false);
                                         break;
                                 }
@@ -702,7 +703,7 @@ namespace terrier {
                         }
 
                         // output format: keysize, threadnum, inertnum, time including scan, time without scan (split by \t)
-                        if (workload_type_ == UINDEX) {
+                        if (workload_type_ == UINDEX || workload_type_ == ULOOP) {
                             std::cout << "bwtree_time" << "\t" << num_columns << "\t" << num_threads << "\t"
                                       << num_inserts << "\t" << sum_time / max_times_ / 1000.0
                                       << "\t" << sum_insert_time / max_times_ / 1000.0 << std::endl;
@@ -762,8 +763,10 @@ namespace terrier {
                     break;
                 case UTPCH:
                     if (single_test_) {
-                        RunBenchmark();
-                        max_num_threads_ = 18; // to delete all the tables
+                        for (; max_num_threads_ >= 1; max_num_threads_--) {
+                            std::cout << max_num_threads_ << '\t';
+                            RunBenchmark();
+                        }
                         break;
                     }
                     std::cout << "Empty" << std::endl;
@@ -801,10 +804,13 @@ namespace terrier {
                             RunBenchmark();
                         }
                     }
-                    max_num_threads_ = 18; // to delete all the tables
                     break;
             }
         }
+        if (local_test_)
+            max_num_threads_ = 4;
+        else
+            max_num_threads_ = 18; // to delete all the tables
     }
 
     BENCHMARK_REGISTER_F(IndexBenchmark, RandomInsert)
