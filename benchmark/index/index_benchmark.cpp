@@ -255,15 +255,15 @@ namespace terrier {
             // Switches
             local_test_ = false;
             scan_all_ = false;
-            use_perf_ = true;
+            use_perf_ = false;
             pin_to_core_ = true;
             one_always_ = false;
             single_test_ = true;
             need_index_ = true;
             need_tpch_ = true;
 
-            other_type_ = INDEX;
-            workload_type_ = USCAN;
+            other_type_ = SCAN;
+            workload_type_ = UTPCH;
 
             // Initialization of upper bounds and lists
             max_times_ = 3;
