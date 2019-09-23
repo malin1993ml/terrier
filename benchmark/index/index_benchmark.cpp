@@ -61,7 +61,7 @@ namespace terrier {
 
         enum other_types {EMPTY, LOOP, ARRAY, ARRAY10M, INDEX, TPCH, SCAN} other_type_;
         std::string type_names_[7] = {"EMPTY", "LOOP", "ARRAY", "ARRAY10M", "INDEX", "TPCH", "SCAN"};
-        enum workload_types {UINDEX, UTPCH, ULOOP, USCAN} workload_type_;
+        enum workload_types {UINDEX, UTPCH, ULOOP, USCAN, UTABLE} workload_type_;
         std::vector <int> tpch_list_;
         int tpch_number_;
         int tpch_repeated_times_;
@@ -75,6 +75,7 @@ namespace terrier {
         uint32_t num_inserts_per_table_;
         int scan_size_kb_; // Size for each scan when scan_all_ is false, currently 1M
         uint32_t tpch_filenum_;
+        uint32_t num_scan_once_; // for UTABLE to scan sql_tables_
 
         uint32_t fixed_core_id_;
         std::string scan_filename_;
@@ -263,7 +264,7 @@ namespace terrier {
             need_tpch_ = true;
 
             other_type_ = SCAN;
-            workload_type_ = UTPCH;
+            workload_type_ = UTABLE;
 
             // Initialization of upper bounds and lists
             max_times_ = 3;
@@ -285,6 +286,7 @@ namespace terrier {
 
             num_inserts_per_table_ = max_num_inserts_ / max_num_threads_ + 1;
             scan_size_kb_ = 1000; // useless if scan_all_ is true
+            num_scan_once_ = 2048;
 
             // set up TPL file names
             const std::string filenames[4] = {"../sample_tpl/tpch/q1.tpl",
@@ -334,7 +336,7 @@ namespace terrier {
                                              *catalog_pointer_, "other_db", "../sample_tpl/tables/");
             }
 
-            if ((workload_type_ == UTPCH || workload_type_ == ULOOP || workload_type_ == USCAN) && single_test_ && !local_test_) { // Small test for correctness of code
+            if ((workload_type_ == UTPCH || workload_type_ == ULOOP || workload_type_ == USCAN || workload_type_ == UTABLE) && single_test_ && !local_test_) { // Small test for correctness of code
                 other_type_ = EMPTY;
                 one_always_ = false;
                 max_num_threads_ = 18;
@@ -380,7 +382,6 @@ namespace terrier {
             do {
                 for (int i = 0; i < (1 << 30); i++)
                     x = x * 3 + 7;
-                //sleep(0);
             } while(*unfinished);
             volatile int y UNUSED_ATTRIBUTE = x;
         }
@@ -392,7 +393,6 @@ namespace terrier {
             while(*unfinished) {
                 for (int i = 0; i < array_length; i++)
                     my_array[i] = my_array[i] * 3 + 7;
-                //sleep(0);
             }
         }
 
@@ -494,6 +494,30 @@ namespace terrier {
             *insert_time_ms = thread_run_time_ms;
 
             delete[] key_buffer;
+        }
+
+        /*
+         * function of index insertion for each thread
+         */
+        void TableScan(uint32_t table_id, uint32_t num_scan, int num_columns) {
+            auto *const txn = txn_manager_.BeginTransaction();
+            storage::SqlTable *sql_table = sql_tables_[table_id];
+            auto it = sql_table->begin();
+            std::vector<catalog::col_oid_t> col_oids_for_use;
+            col_oids_for_use.clear();
+            for (int i = 0; i < num_columns; i++)
+                col_oids_for_use.push_back(col_oids_[i]);
+            storage::ProjectedColumnsInitializer initializer = sql_table->InitializerForProjectedColumns(
+                    col_oids_for_use, num_scan_once_).first;
+            auto *buffer = common::AllocationUtil::AllocateAligned(
+                    initializer.ProjectedColumnsSize());
+            storage::ProjectedColumns *columns = initializer.Initialize(buffer);
+            uint32_t num_scanned = 0;
+            do {
+                sql_table->Scan(txn, &it, columns);
+                num_scanned += num_scan_once_;
+            } while (num_scanned < num_scan && it != sql_table->end());
+            txn_manager_.Commit(txn, transaction::TransactionUtil::EmptyCallback, nullptr);
         }
 
         /*
@@ -654,9 +678,13 @@ namespace terrier {
                                         }
                                     }
                                         break;
-                                    case ULOOP:
-                                        std::atomic <bool> always_false = false;
+                                    case ULOOP: {
+                                        std::atomic<bool> always_false = false;
                                         LoopFunction(&always_false);
+                                    }
+                                        break;
+                                    case UTABLE:
+                                        TableScan(worker_id, num_inserts_per_table_, max_num_columns_);
                                         break;
                                 }
                             };
@@ -703,7 +731,7 @@ namespace terrier {
                         }
 
                         // output format: keysize, threadnum, inertnum, time including scan, time without scan (split by \t)
-                        if (workload_type_ == UINDEX || workload_type_ == ULOOP) {
+                        if (workload_type_ == UINDEX || workload_type_ == ULOOP || workload_type_ == UTABLE) {
                             std::cout << "bwtree_time" << "\t" << num_columns << "\t" << num_threads << "\t"
                                       << num_inserts << "\t" << sum_time / max_times_ / 1000.0
                                       << "\t" << sum_insert_time / max_times_ / 1000.0 << std::endl;
@@ -759,6 +787,7 @@ namespace terrier {
                 case UINDEX:
                 case ULOOP:
                 case USCAN:
+                case UTABLE:
                     RunBenchmark();
                     break;
                 case UTPCH:
