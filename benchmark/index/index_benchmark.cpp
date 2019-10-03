@@ -1,5 +1,5 @@
 // Whether pin to core, only for GC now. TODO : discuss it later
-#define MY_PIN_TO_CORE
+//#define MY_PIN_TO_CORE
 
 #include <atomic>
 #include <memory>
@@ -26,17 +26,17 @@
 #include "util/random_test_util.h"
 #include "util/storage_test_util.h"
 #include "util/test_harness.h"
-#include "util/transaction_test_util.h"
+//#include "util/transaction_test_util.h"
 
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
 #include <unistd.h>
 
-#include "execution/util/common.h"
+//#include "execution/util/common.h"
 #include "execution/tplclass.h"
 #include "catalog/catalog.h"
-#include "execution/sql/table_generator/sample_output.h"
+#include "execution/table_generator/sample_output.h"
 #include "execution/util/timer.h"
 #include "execution/vm/module.h"
 
@@ -94,12 +94,15 @@ namespace terrier {
         std::default_random_engine generator_;
 
         std::chrono::milliseconds gc_period_;
+        storage::GarbageCollector *gc_;
         storage::GarbageCollectorThread *gc_thread_;
 
         storage::BlockStore block_store_{100000, 100000};
         storage::RecordBufferSegmentPool buffer_pool_{1000000, 1000000};
         std::vector <storage::SqlTable *> sql_tables_;
-        transaction::TransactionManager txn_manager_{&buffer_pool_, true, LOGGING_DISABLED};
+        transaction::TimestampManager tm_manager_{};
+        transaction::DeferredActionManager da_manager_{&tm_manager_};
+        transaction::TransactionManager txn_manager_{&tm_manager_, &da_manager_, &buffer_pool_, true, nullptr};
         std::vector<catalog::col_oid_t> col_oids_;
         execution::exec::SampleOutput sample_output_;
         catalog::db_oid_t db_oid_;
@@ -147,16 +150,18 @@ namespace terrier {
             for (int table_index = 0; table_index < (int)max_num_threads_ * 2 - 2; table_index++) {
                 storage::SqlTable *sql_table = new storage::SqlTable(&block_store_, table_schema);
                 //, catalog::table_oid_t(1));
-                storage::ProjectedRowInitializer tuple_initializer_{
-                        sql_table->InitializerForProjectedRow(col_oids_).first};
+                storage::ProjectedRowInitializer tuple_initializer{
+                        sql_table->InitializerForProjectedRow(col_oids_)};
+                //storage::ProjectedRowInitializer tuple_initializer =
+                //        storage::ProjectedRowInitializer::Create(std::vector<uint8_t>{1}, std::vector<uint16_t>{1});
 
                 auto *const insert_txn = txn_manager_.BeginTransaction();
 
                 for (uint32_t k = 0; k < num_inserts_per_table_; k++) {
                     uint32_t i = key_permutation_[table_index * num_inserts_per_table_ + k];
                     auto *const insert_redo =
-                            insert_txn->StageWrite(CatalogTestUtil::test_db_oid, CatalogTestUtil::test_table_oid,
-                                                   tuple_initializer_);
+                            insert_txn->StageWrite(CatalogTestUtil::TEST_DB_OID, CatalogTestUtil::TEST_TABLE_OID,
+                                                   tuple_initializer);
                     auto *const insert_tuple = insert_redo->Delta();
                     for (uint16_t j = 0; j < (uint16_t)max_num_columns_; j++)
                         *reinterpret_cast<int64_t *>(insert_tuple->AccessForceNotNull(j)) = (int64_t)i;
@@ -254,7 +259,7 @@ namespace terrier {
         void SetUp(const benchmark::State &state) final {
 
             // Switches
-            local_test_ = false;
+            local_test_ = true;
             scan_all_ = false;
             use_perf_ = false;
             pin_to_core_ = true;
@@ -263,8 +268,8 @@ namespace terrier {
             need_index_ = true;
             need_tpch_ = true;
 
-            other_type_ = SCAN;
-            workload_type_ = UTABLE;
+            other_type_ = TPCH;
+            workload_type_ = UINDEX;
 
             // Initialization of upper bounds and lists
             max_times_ = 3;
@@ -289,10 +294,10 @@ namespace terrier {
             num_scan_once_ = 2048;
 
             // set up TPL file names
-            const std::string filenames[4] = {"../sample_tpl/tpch/q1.tpl",
-                                              "../sample_tpl/tpch/q4.tpl",
-                                              "../sample_tpl/tpch/q5.tpl",
-                                              "../sample_tpl/tpch/q6.tpl"};
+            const std::string filenames[4] = {"../sample_tpl/sample_tpl/tpch_q1.tpl",
+                                              "../sample_tpl/sample_tpl/tpch_q4.tpl",
+                                              "../sample_tpl/sample_tpl/tpch_q5.tpl",
+                                              "../sample_tpl/sample_tpl/tpch_q6.tpl"};
             tpch_filename_.clear();
             tpch_filenum_ = 4;
             for (int i = 0; i < 4; i++)
@@ -309,7 +314,8 @@ namespace terrier {
             // set up sequence of cores and GC
             std::chrono::milliseconds gc_period{10};
             gc_period_ = gc_period;
-            gc_thread_ = new storage::GarbageCollectorThread(&txn_manager_, gc_period_);
+            gc_ = new storage::GarbageCollector(&tm_manager_, &da_manager_, &txn_manager_, DISABLED);
+            gc_thread_ = new storage::GarbageCollectorThread(gc_, gc_period_);
             sql_tables_.resize(max_num_threads_ * 2 - 2);
 
             // If using INDEX workload, generate the tables
@@ -322,18 +328,18 @@ namespace terrier {
                 // currently cmd1 is not necessary
                 // const char * cmd1 = "-output-name=tpch_q1";
                 const char *cmd2 = "-sql";
-                const char *cmd3 = "../sample_tpl/tpch/q1.tpl";
+                const char *cmd3 = "../sample_tpl/sample_tpl/tpch_q1.tpl";
                 const char *cmd_for_tpch[3] = {cmd0, cmd2, cmd3};
 
                 execution::TplClass::InitTplClass(3, (char **) cmd_for_tpch);
             }
             if (workload_type_ == UTPCH || workload_type_ == USCAN) {
                 execution::TplClass::BuildDb(txn_manager_, block_store_, sample_output_benchmark_, db_oid_benchmark_,
-                                             *catalog_pointer_, "benchmark_db", "../sample_tpl/benchmark_tables/");
+                                             *catalog_pointer_, "benchmark_db", "../sample_tpl/tables0.01/");
             }
             if (need_tpch_) {
                 execution::TplClass::BuildDb(txn_manager_, block_store_, sample_output_, db_oid_,
-                                             *catalog_pointer_, "other_db", "../sample_tpl/tables/");
+                                             *catalog_pointer_, "other_db", "../sample_tpl/tables0.01/");
             }
 
             if ((workload_type_ == UTPCH || workload_type_ == ULOOP || workload_type_ == USCAN || workload_type_ == UTABLE) && single_test_ && !local_test_) { // Small test for correctness of code
@@ -357,6 +363,7 @@ namespace terrier {
                 execution::TplClass::ShutdownTplClass();
             }
             delete gc_thread_;
+            delete gc_;
         }
 
         /*
@@ -401,7 +408,7 @@ namespace terrier {
          */
         storage::index::Index * IndexInit(int num_columns) {
             // Initialize the index
-            catalog::IndexSchema default_schema_;
+            catalog::IndexSchema default_schema;
             std::vector<catalog::IndexSchema::Column> keycols;
 
             for (int i = 0; i < num_columns; i++) {
@@ -411,14 +418,10 @@ namespace terrier {
                                                       catalog::col_oid_t(i)));
                 StorageTestUtil::ForceOid(&(keycols[i]), catalog::indexkeycol_oid_t(i));
             }
-            default_schema_ = catalog::IndexSchema(keycols, false, false, false, true);
+            default_schema = catalog::IndexSchema(keycols, storage::index::IndexType::BWTREE, false, false, false, true);
 
             // BwTreeIndex
-            return (storage::index::IndexBuilder()
-                    .SetConstraintType(storage::index::ConstraintType::DEFAULT)
-                    .SetKeySchema(default_schema_)
-                    .SetOid(catalog::index_oid_t(2)))
-                    .Build();
+            return (storage::index::IndexBuilder().SetKeySchema(default_schema)).Build();
         }
 
         /*
@@ -461,7 +464,7 @@ namespace terrier {
                     num_to_scan = scan_size_kb_ / num_columns / 8;
 
                 storage::ProjectedColumnsInitializer initializer = sql_table->InitializerForProjectedColumns(
-                        col_oids_for_use, (uint32_t) num_to_scan).first;
+                        col_oids_for_use, (uint32_t) num_to_scan);
                 auto *buffer = common::AllocationUtil::AllocateAligned(
                         initializer.ProjectedColumnsSize());
                 storage::ProjectedColumns *columns = initializer.Initialize(buffer);
@@ -508,7 +511,7 @@ namespace terrier {
             for (int i = 0; i < num_columns; i++)
                 col_oids_for_use.push_back(col_oids_[i]);
             storage::ProjectedColumnsInitializer initializer = sql_table->InitializerForProjectedColumns(
-                    col_oids_for_use, num_scan_once_).first;
+                    col_oids_for_use, num_scan_once_);
             auto *buffer = common::AllocationUtil::AllocateAligned(
                     initializer.ProjectedColumnsSize());
             storage::ProjectedColumns *columns = initializer.Initialize(buffer);

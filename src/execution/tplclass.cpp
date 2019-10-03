@@ -1,4 +1,8 @@
+#include <gflags/gflags.h>
+#include <unistd.h>
+#include <algorithm>
 #include <csignal>
+#include <cstdio>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -13,9 +17,8 @@
 #include "execution/sema/error_reporter.h"
 #include "execution/sema/sema.h"
 #include "execution/sql/memory_pool.h"
-#include "execution/sql/table_generator/sample_output.h"
-
-#include "execution/sql/table_generator/table_generator.h"
+#include "execution/table_generator/sample_output.h"
+#include "execution/table_generator/table_generator.h"
 #include "execution/tpl.h"
 #include "execution/util/cpu_info.h"
 #include "execution/util/timer.h"
@@ -23,11 +26,14 @@
 #include "execution/vm/bytecode_module.h"
 #include "execution/vm/llvm_engine.h"
 #include "execution/vm/module.h"
+#include "execution/vm/vm.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "storage/garbage_collector.h"
-
 #include "loggers/loggers_util.h"
+#include "settings/settings_manager.h"
+#include "storage/garbage_collector.h"
+#include "transaction/deferred_action_manager.h"
+#include "transaction/timestamp_manager.h"
 
 #define __SETTING_GFLAGS_DEFINE__      // NOLINT
 #include "settings/settings_common.h"  // NOLINT
@@ -40,17 +46,17 @@
 // CLI options
 // ---------------------------------------------------------
 
-llvm::cl::OptionCategory kTplOptionsCategory("TPL Compiler Options",
-                                             "Options for controlling the TPL compilation process.");
-llvm::cl::opt<std::string> kInputFile(llvm::cl::Positional, llvm::cl::desc("<input file>"), llvm::cl::init(""),
-                                      llvm::cl::cat(kTplOptionsCategory));
-llvm::cl::opt<bool> kPrintAst("print-ast", llvm::cl::desc("Print the programs AST"),
-                              llvm::cl::cat(kTplOptionsCategory));
-llvm::cl::opt<bool> kPrintTbc("print-tbc", llvm::cl::desc("Print the generated TPL Bytecode"),
-                              llvm::cl::cat(kTplOptionsCategory));
-llvm::cl::opt<std::string> kOutputName("output-name", llvm::cl::desc("Print the output name"),
-                                       llvm::cl::init("schema1"), llvm::cl::cat(kTplOptionsCategory));
-llvm::cl::opt<bool> kIsSQL("sql", llvm::cl::desc("Is the input a SQL query?"), llvm::cl::cat(kTplOptionsCategory));
+llvm::cl::OptionCategory tpl_options_category("TPL Compiler Options",
+                                              "Options for controlling the TPL compilation process.");
+llvm::cl::opt<std::string> input_file(llvm::cl::Positional, llvm::cl::desc("<input file>"), llvm::cl::init(""),
+                                      llvm::cl::cat(tpl_options_category));
+llvm::cl::opt<bool> print_ast("print-ast", llvm::cl::desc("Print the programs AST"),
+                              llvm::cl::cat(tpl_options_category));
+llvm::cl::opt<bool> print_tbc("print-tbc", llvm::cl::desc("Print the generated TPL Bytecode"),
+                              llvm::cl::cat(tpl_options_category));
+llvm::cl::opt<std::string> output_name("output-name", llvm::cl::desc("Print the output name"),
+                                       llvm::cl::init("schema10"), llvm::cl::cat(tpl_options_category));
+llvm::cl::opt<bool> is_sql("sql", llvm::cl::desc("Is the input a SQL query?"), llvm::cl::cat(tpl_options_category));
 
 tbb::task_scheduler_init scheduler;
 
@@ -66,9 +72,9 @@ namespace terrier::execution {
                          bool interp, bool adaptive, bool jit) {
         // Mostly copied from tpl.cpp
         auto *txn = txn_manager_pointer_->BeginTransaction();
-        auto output_schema = sample_output_pointer_->GetSchema(kOutputName.data());
+        auto output_schema = sample_output_pointer_->GetSchema(output_name.data());
         exec::OutputPrinter printer(output_schema);
-        auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog_.GetAccessor(txn, db_oid_));
+        auto accessor = std::unique_ptr<catalog::CatalogAccessor>(catalog_.GetAccessor(txn, db_oid_));
 
         exec::ExecutionContext exec_ctx{db_oid_, txn, printer, output_schema, std::move(accessor)};
 
@@ -96,8 +102,7 @@ namespace terrier::execution {
             const std::string &source = (*file)->getBuffer().str();
 
             parsing::Scanner scanner(source.data(), source.length());
-            parsing::Rewriter rewriter(&context, exec_ctx.GetAccessor());
-            parsing::Parser parser(&scanner, &context, &rewriter);
+            parsing::Parser parser(&scanner, &context);
 
             //
             // Parse
@@ -110,9 +115,8 @@ namespace terrier::execution {
             }
 
             if (error_reporter.HasErrors()) {
-                EXECUTION_LOG_ERROR("Parsing error!");
-                error_reporter.PrintErrors();
-                return;
+                EXECUTION_LOG_ERROR("Parsing errors: \n {}", error_reporter.SerializeErrors());
+                throw std::runtime_error("Parsing Error!");
             }
 
             //
@@ -126,14 +130,13 @@ namespace terrier::execution {
             }
 
             if (error_reporter.HasErrors()) {
-                EXECUTION_LOG_ERROR("Type-checking error!");
-                error_reporter.PrintErrors();
-                throw std::runtime_error("Type Checking Exception!");
+                EXECUTION_LOG_ERROR("Type-checking errors: \n {}", error_reporter.SerializeErrors());
+                throw std::runtime_error("Type Checking Error!");
             }
 
             // Dump AST
-            if (kPrintAst) {
-                ast::AstDump::Dump(root);
+            if (print_ast) {
+                EXECUTION_LOG_INFO("\n{}", ast::AstDump::Dump(root));
             }
 
             //
@@ -147,8 +150,10 @@ namespace terrier::execution {
             }
 
             // Dump Bytecode
-            if (kPrintTbc) {
-                bytecode_module->PrettyPrint(&std::cout);
+            if (print_tbc) {
+                std::stringstream ss;
+                bytecode_module->PrettyPrint(&ss);
+                EXECUTION_LOG_INFO("\n{}", ss.str());
             }
 
             // Record the module and reset the iterator
@@ -164,19 +169,17 @@ namespace terrier::execution {
         if (interp) {
             util::ScopedTimer<std::milli> timer(&interp_exec_ms);
 
-            if (kIsSQL) {
-                std::function<i64(exec::ExecutionContext *)> main;
+            if (is_sql) {
+                std::function<int64_t(exec::ExecutionContext *)> main;
                 if (!itr->second->GetFunction("main", vm::ExecutionMode::Interpret, &main)) {
                     EXECUTION_LOG_ERROR(
                             "Missing 'main' entry function with signature "
                             "(*ExecutionContext)->int64");
                     return;
                 }
-                auto memory = std::make_unique<sql::MemoryPool>(nullptr);
-                exec_ctx.SetMemoryPool(std::move(memory));
                 EXECUTION_LOG_INFO("VM main() returned: {}", main(&exec_ctx));
             } else {
-                std::function<i64()> main;
+                std::function<int64_t()> main;
                 if (!itr->second->GetFunction("main", vm::ExecutionMode::Interpret, &main)) {
                     EXECUTION_LOG_ERROR("Missing 'main' entry function with signature ()->int64");
                     return;
@@ -192,19 +195,17 @@ namespace terrier::execution {
         if (adaptive) {
             util::ScopedTimer<std::milli> timer(&adaptive_exec_ms);
 
-            if (kIsSQL) {
-                std::function<i64(exec::ExecutionContext *)> main;
+            if (is_sql) {
+                std::function<int64_t(exec::ExecutionContext *)> main;
                 if (!itr->second->GetFunction("main", vm::ExecutionMode::Adaptive, &main)) {
                     EXECUTION_LOG_ERROR(
                             "Missing 'main' entry function with signature "
                             "(*ExecutionContext)->int64");
                     return;
                 }
-                auto memory = std::make_unique<sql::MemoryPool>(nullptr);
-                exec_ctx.SetMemoryPool(std::move(memory));
                 EXECUTION_LOG_INFO("ADAPTIVE main() returned: {}", main(&exec_ctx));
             } else {
-                std::function<i64()> main;
+                std::function<int64_t()> main;
                 if (!itr->second->GetFunction("main", vm::ExecutionMode::Adaptive, &main)) {
                     EXECUTION_LOG_ERROR("Missing 'main' entry function with signature ()->int64");
                     return;
@@ -217,21 +218,18 @@ namespace terrier::execution {
         // JIT
         //
         if (jit) {
-
-            if (kIsSQL) {
-                std::function<i64(exec::ExecutionContext *)> main;
+            if (is_sql) {
+                std::function<int64_t(exec::ExecutionContext *)> main;
                 if (!itr->second->GetFunction("main", vm::ExecutionMode::Compiled, &main)) {
                     EXECUTION_LOG_ERROR(
                             "Missing 'main' entry function with signature "
                             "(*ExecutionContext)->int64");
                     return;
                 }
-                auto memory = std::make_unique<sql::MemoryPool>(nullptr);
-                exec_ctx.SetMemoryPool(std::move(memory));
                 util::ScopedTimer<std::milli> timer(&jit_exec_ms);
                 EXECUTION_LOG_INFO("JIT main() returned: {}", main(&exec_ctx));
             } else {
-                std::function<i64()> main;
+                std::function<int64_t()> main;
                 if (!itr->second->GetFunction("main", vm::ExecutionMode::Compiled, &main)) {
                     EXECUTION_LOG_ERROR("Missing 'main' entry function with signature ()->int64");
                     return;
@@ -246,7 +244,7 @@ namespace terrier::execution {
                 "Parse: {} ms, Type-check: {} ms, Code-gen: {} ms, Interp. Exec.: {} ms, "
                 "Adaptive Exec.: {} ms, Jit+Exec.: {} ms",
                 parse_ms, typecheck_ms, codegen_ms, interp_exec_ms, adaptive_exec_ms, jit_exec_ms);
-        txn_manager_pointer_->Commit(txn, [](void *) {}, nullptr);
+        txn_manager_pointer_->Commit(txn, transaction::TransactionUtil::EmptyCallback, nullptr);
         // update the time
         if (interp) {
             *interp_exec_ms_sum += interp_exec_ms;
@@ -272,11 +270,11 @@ namespace terrier::execution {
     int TplClass::InitTplClass(int argc, char **argv) {  // NOLINT (bugprone-exception-escape)
 
         // Parse options
-        llvm::cl::HideUnrelatedOptions(kTplOptionsCategory);
+        llvm::cl::HideUnrelatedOptions(tpl_options_category);
         llvm::cl::ParseCommandLineOptions(argc, argv);
 
         // Initialize a signal handler to call SignalHandler()
-        struct sigaction sa;
+        struct sigaction sa;  // NOLINT
         sa.sa_handler = &TplClassSignalHandler;
         sa.sa_flags = SA_RESTART;
 
@@ -312,11 +310,11 @@ namespace terrier::execution {
 
         // Get the correct output format for this test
         sample_output.InitTestOutput();
-        auto output_schema = sample_output.GetSchema(kOutputName.data());
+        auto output_schema = sample_output.GetSchema(output_name.data());
 
         // Make the catalog accessor
         db_oid = catalog.CreateDatabase(txn, db_name, true);
-        auto accessor = std::unique_ptr<terrier::catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
+        auto accessor = std::unique_ptr<catalog::CatalogAccessor>(catalog.GetAccessor(txn, db_oid));
         auto ns_oid = accessor->GetDefaultNamespace();
 
         // Make the execution context
@@ -327,9 +325,9 @@ namespace terrier::execution {
         // TODO(Amadou): Read this in from a directory. That would require boost or experimental C++ though
         sql::TableGenerator table_generator{&exec_ctx, &block_store, ns_oid};
         table_generator.GenerateTestTables();
-        table_generator.GenerateTPCHTables(table_root);
+        // table_generator.GenerateTPCHTables(table_root);
         // Types are the same for tables of all scale factors
-        table_generator.GenerateTableFromFile("../sample_tpl/tables/types1.schema", "../sample_tpl/tables/types1.data");
+        // table_generator.GenerateTableFromFile("../sample_tpl/tables/types1.schema", "../sample_tpl/tables/types1.data");
 
         txn_manager.Commit(txn, [](void *) {}, nullptr);
     }

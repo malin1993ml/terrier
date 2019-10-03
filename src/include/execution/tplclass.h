@@ -57,7 +57,7 @@ namespace terrier::execution {
         /*
          * Signal handler
          */
-        static void TplClassSignalHandler(i32 sig_num) {
+        static void TplClassSignalHandler(int32_t sig_num) {
             if (sig_num == SIGINT) {
                 ShutdownTplClass();
                 exit(0);
