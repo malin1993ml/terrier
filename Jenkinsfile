@@ -41,28 +41,6 @@ pipeline {
                         sh 'cd build && timeout 1h make unittest'
                         sh 'cd build && timeout 1h make check-tpl'
                         sh 'cd build && python ../script/testing/junit/run_junit.py'
-                    }
-                }
-
-                stage('ubuntu-18.04/gcc-7.3.0 (Debug/Coverage/unittest)') {
-                    agent {
-                        docker {
-                            image 'ubuntu:bionic'
-                            args '--cap-add sys_ptrace'
-                        }
-                    }
-                    environment {
-                        CODECOV_TOKEN=credentials('codecov-token')
-                    }
-                    steps {
-                        sh 'echo $NODE_NAME'
-                        sh 'echo y | sudo ./script/installation/packages.sh'
-                        sh 'sudo apt-get -y install curl lcov'
-                        sh 'mkdir build'
-                        sh 'cd build && cmake -DCMAKE_BUILD_TYPE=Debug -DTERRIER_USE_ASAN=OFF -DTERRIER_GENERATE_COVERAGE=ON -DTERRIER_BUILD_BENCHMARKS=OFF .. && make -j$(nproc)'
-                        sh 'cd build && timeout 1h make unittest'
-                        sh 'cd build && timeout 1h make check-tpl'
-                        sh 'cd build && python ../script/testing/junit/run_junit.py'
                         sh 'cd build && lcov --directory . --capture --output-file coverage.info'
                         sh 'cd build && lcov --remove coverage.info \'/usr/*\' --output-file coverage.info'
                         sh 'cd build && lcov --remove coverage.info \'*/build/*\' --output-file coverage.info'

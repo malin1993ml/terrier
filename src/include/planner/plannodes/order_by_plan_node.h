@@ -9,7 +9,7 @@
 
 namespace terrier::planner {
 
-using SortKey = std::pair<catalog::col_oid_t, OrderByOrderingType>;
+using SortKey = std::pair<std::shared_ptr<parser::AbstractExpression>, OrderByOrderingType>;
 
 /**
  * Plan node for order by operator
@@ -33,7 +33,7 @@ class OrderByPlanNode : public AbstractPlanNode {
      * @param ordering ordering (ASC or DESC) for key
      * @return builder object
      */
-    Builder &AddSortKey(catalog::col_oid_t key, OrderByOrderingType ordering) {
+    Builder &AddSortKey(std::shared_ptr<parser::AbstractExpression> key, OrderByOrderingType ordering) {
       sort_keys_.emplace_back(key, ordering);
       return *this;
     }

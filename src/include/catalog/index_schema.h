@@ -217,7 +217,15 @@ class IndexSchema {
         is_exclusion_(is_exclusion),
         is_immediate_(is_immediate) {
     TERRIER_ASSERT((is_primary && is_unique) || (!is_primary), "is_primary requires is_unique to be true as well.");
-    ExtractIndexedColOids();
+    for (uint32_t i = 0; i < columns_.size(); i++) {
+      // If not all columns assigned OIDs, then clear the map because this is
+      // a definition of a new/modified table not a catalog generated schema.
+      if (columns_[i].Oid() == catalog::INVALID_INDEXKEYCOL_OID) {
+        key_oid_to_offset.clear();
+        return;
+      }
+      key_oid_to_offset[columns_[i].Oid()] = i;
+    }
   }
 
   IndexSchema() = default;
@@ -250,7 +258,17 @@ class IndexSchema {
   }
 
   /**
-   * @return true if is a unique index
+   * @param col_oid identifier of a Column in the schema
+   * @return description of the schema for a specific column
+   */
+  const Column &GetColumn(const indexkeycol_oid_t col_oid) const {
+    TERRIER_ASSERT(key_oid_to_offset.count(col_oid) > 0, "col_oid does not exist in this Schema");
+    const uint32_t col_offset = key_oid_to_offset.at(col_oid);
+    return columns_[col_offset];
+  }
+
+  /**
+   * @return true if this schema is for a unique index
    */
   bool Unique() const { return is_unique_; }
 
@@ -371,6 +389,14 @@ class IndexSchema {
   bool is_primary_;
   bool is_exclusion_;
   bool is_immediate_;
+  bool is_valid_;
+  bool is_ready_;
+  bool is_live_;
+  std::unordered_map<indexkeycol_oid_t, uint32_t> key_oid_to_offset;
+
+  void SetValid(const bool is_valid) { is_valid_ = is_valid; }
+  void SetReady(const bool is_ready) { is_ready_ = is_ready; }
+  void SetLive(const bool is_live) { is_live_ = is_live; }
 
   friend class Catalog;
   friend class postgres::Builder;

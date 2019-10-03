@@ -4,8 +4,6 @@
 
 file(GLOB_RECURSE TERRIER_SRCS ${PROJECT_SOURCE_DIR}/src/*.cpp ${PROJECT_SOURCE_DIR}/src/include/*.h)
 list(REMOVE_ITEM TERRIER_SRCS ${PROJECT_SOURCE_DIR}/src/main/terrier.cpp)
-list(REMOVE_ITEM TERRIER_SRCS ${PROJECT_SOURCE_DIR}/src/execution/tpl.cpp)
-list(REMOVE_ITEM TERRIER_SRCS ${PROJECT_SOURCE_DIR}/src/execution/vm/gen_opt_bc.cpp)
 
 ###############################################
 # Third party sources
@@ -63,9 +61,6 @@ list(APPEND TERRIER_SRCS ${XBYAK_SOURCES})
 file(GLOB_RECURSE XXHASH_SOURCES ${PROJECT_SOURCE_DIR}/third_party/xxHash/*.h)
 list(APPEND TERRIER_SRCS ${XXHASH_SOURCES})
 
-# libcuckoo
-file(GLOB_RECURSE LIBCUCKOO_SOURCES ${PROJECT_SOURCE_DIR}/third_party/libcuckoo/*.hh)
-list(APPEND TERRIER_SRCS ${LIBCUCKOO_SOURCES})
 
 ###############################################
 # Terrier library
