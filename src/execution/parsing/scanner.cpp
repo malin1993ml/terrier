@@ -8,21 +8,21 @@ namespace terrier::execution::parsing {
 
 Scanner::Scanner(const std::string &source) : Scanner(source.data(), source.length()) {}
 
-Scanner::Scanner(const char *source, u64 source_len) : source_(source), source_len_(source_len), offset_(0) {
+Scanner::Scanner(const char *source, uint64_t source_len) : source_(source), source_len_(source_len), offset_(0) {
   // Setup current token information
-  curr_.type = Token::Type::UNINIITIALIZED;
-  curr_.offset = 0;
-  curr_.pos.line = 0;
-  curr_.pos.column = 0;
+  curr_.type_ = Token::Type::UNINIITIALIZED;
+  curr_.offset_ = 0;
+  curr_.pos_.line_ = 0;
+  curr_.pos_.column_ = 0;
 
-  next_.type = Token::Type::UNINIITIALIZED;
-  next_.offset = 0;
-  next_.pos.line = 0;
-  next_.pos.column = 0;
+  next_.type_ = Token::Type::UNINIITIALIZED;
+  next_.offset_ = 0;
+  next_.pos_.line_ = 0;
+  next_.pos_.column_ = 0;
 
   // Advance character iterator to the first slot
-  c0_pos_.line = 1;
-  c0_pos_.column = 0;
+  c0_pos_.line_ = 1;
+  c0_pos_.column_ = 0;
   Advance();
 
   // Find the first token
@@ -32,20 +32,20 @@ Scanner::Scanner(const char *source, u64 source_len) : source_(source), source_l
 Token::Type Scanner::Next() {
   curr_ = next_;
   Scan();
-  return curr_.type;
+  return curr_.type_;
 }
 
 void Scanner::Scan() {
   // Re-init the next token
-  next_.literal.clear();
+  next_.literal_.clear();
 
   // The token
   Token::Type type;
 
   do {
     // Setup current token positions
-    next_.pos = c0_pos_;
-    next_.offset = offset_;
+    next_.pos_ = c0_pos_;
+    next_.offset_ = offset_;
 
     switch (c0_) {
       case '@': {
@@ -211,7 +211,7 @@ void Scanner::Scan() {
           type = ScanNumber();
         } else if (IsIdentifierChar(c0_)) {
           type = ScanIdentifierOrKeyword();
-        } else if (c0_ == kEndOfInput) {
+        } else if (c0_ == K_END_OF_INPUT) {
           type = Token::Type::EOS;
         } else {
           SkipWhiteSpace();
@@ -221,7 +221,7 @@ void Scanner::Scan() {
     }
   } while (type == Token::Type::WHITESPACE);
 
-  next_.type = type;
+  next_.type_ = type;
 }
 
 void Scanner::SkipWhiteSpace() {
@@ -234,28 +234,30 @@ void Scanner::SkipWhiteSpace() {
         break;
       }
       case '\n': {
-        c0_pos_.line++;
-        c0_pos_.column = 0;
+        c0_pos_.line_++;
+        c0_pos_.column_ = 0;
         Advance();
         break;
       }
-      default: { return; }
+      default: {
+        return;
+      }
     }
   }
 }
 
 void Scanner::SkipLineComment() {
-  while (c0_ != '\n' && c0_ != kEndOfInput) {
+  while (c0_ != '\n' && c0_ != K_END_OF_INPUT) {
     Advance();
   }
 }
 
 void Scanner::SkipBlockComment() {
-  i32 c;
+  int32_t c;
   do {
     c = c0_;
     Advance();
-  } while (c != '*' && c0_ != '/' && c0_ != kEndOfInput);
+  } while (c != '*' && c0_ != '/' && c0_ != K_END_OF_INPUT);
 
   // Skip the '/' if we found. If we're are the end, Advance() will be a no-op
   // anyways, so we're safe.
@@ -265,8 +267,8 @@ void Scanner::SkipBlockComment() {
 Token::Type Scanner::ScanIdentifierOrKeyword() {
   // First collect identifier
   int32_t identifier_char0 = c0_;
-  while (IsIdentifierChar(c0_) && c0_ != kEndOfInput) {
-    next_.literal += static_cast<char>(c0_);
+  while (IsIdentifierChar(c0_) && c0_ != K_END_OF_INPUT) {
+    next_.literal_ += static_cast<char>(c0_);
     Advance();
   }
 
@@ -275,8 +277,8 @@ Token::Type Scanner::ScanIdentifierOrKeyword() {
     return Token::Type::IDENTIFIER;
   }
 
-  const auto *identifier = next_.literal.data();
-  auto identifier_len = static_cast<u32>(next_.literal.length());
+  const auto *identifier = next_.literal_.data();
+  auto identifier_len = static_cast<uint32_t>(next_.literal_.length());
 
   return CheckIdentifierOrKeyword(identifier, identifier_len);
 }
@@ -308,11 +310,11 @@ Token::Type Scanner::ScanIdentifierOrKeyword() {
   GROUP_START('v')                          \
   GROUP_ELEM("var", Token::Type::VAR)
 
-Token::Type Scanner::CheckIdentifierOrKeyword(const char *input, u32 input_len) {
-  static constexpr u32 kMinKeywordLen = 2;
-  static constexpr u32 kMaxKeywordLen = 6;
+Token::Type Scanner::CheckIdentifierOrKeyword(const char *input, uint32_t input_len) {
+  static constexpr uint32_t k_min_keyword_len = 2;
+  static constexpr uint32_t k_max_keyword_len = 6;
 
-  if (input_len < kMinKeywordLen || input_len > kMaxKeywordLen) {
+  if (input_len < k_min_keyword_len || input_len > k_max_keyword_len) {
     return Token::Type::IDENTIFIER;
   }
 
@@ -322,7 +324,7 @@ Token::Type Scanner::CheckIdentifierOrKeyword(const char *input, u32 input_len) 
 
 #define GROUP_ELEM(str, typ)                                                                             \
   {                                                                                                      \
-    const u64 keyword_len = sizeof(str) - 1;                                                             \
+    const uint64_t keyword_len = sizeof(str) - 1;                                                        \
     if (keyword_len == input_len && (str)[1] == input[1] && (keyword_len < 3 || (str)[2] == input[2]) && \
         (keyword_len < 4 || (str)[3] == input[3]) && (keyword_len < 5 || (str)[4] == input[4]) &&        \
         (keyword_len < 6 || (str)[5] == input[5])) {                                                     \
@@ -349,19 +351,19 @@ Token::Type Scanner::ScanNumber() {
   Token::Type type = Token::Type::INTEGER;
 
   while (IsDigit(c0_)) {
-    next_.literal += static_cast<char>(c0_);
+    next_.literal_ += static_cast<char>(c0_);
     Advance();
   }
 
   if (c0_ == '.') {
     type = Token::Type::FLOAT;
 
-    next_.literal.append(".");
+    next_.literal_.append(".");
 
     Advance();
 
     while (IsDigit(c0_)) {
-      next_.literal += static_cast<char>(c0_);
+      next_.literal_ += static_cast<char>(c0_);
       Advance();
     }
   }
@@ -373,9 +375,9 @@ Token::Type Scanner::ScanString() {
   // Single-line string. The lookahead character points to the start of the
   // string literal
   while (true) {
-    if (c0_ == kEndOfInput) {
-      next_.literal.clear();
-      next_.literal = "Unterminated string";
+    if (c0_ == K_END_OF_INPUT) {
+      next_.literal_.clear();
+      next_.literal_ = "Unterminated string";
       return Token::Type::ERROR;
     }
 
@@ -383,7 +385,7 @@ Token::Type Scanner::ScanString() {
     bool escape = (c0_ == '\\');
 
     // Add the character to the current string literal
-    next_.literal += static_cast<char>(c0_);
+    next_.literal_ += static_cast<char>(c0_);
 
     Advance();
 

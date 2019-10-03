@@ -3,7 +3,7 @@
 #include <random>
 #include <vector>
 
-#include "execution/util/common.h"
+#include "execution/util/execution_common.h"
 
 namespace terrier::execution::bandit {
 
@@ -17,7 +17,7 @@ class Policy {
   /**
    * An enumeration capturing different policies for choosing actions.
    */
-  enum Kind : u8 {
+  enum Kind : uint8_t {
     EpsilonGreedy = 0,
     Greedy = 1,
     Random = 2,
@@ -40,12 +40,12 @@ class Policy {
   /**
    * Returns the next action according to the policy
    */
-  virtual u32 NextAction(Agent *agent) = 0;
+  virtual uint32_t NextAction(Agent *agent) = 0;
 
   /**
    * @return the kind of policy
    */
-  auto kind() { return kind_; }
+  auto GetKind() { return kind_; }
 
  protected:
   /**
@@ -69,7 +69,7 @@ class EpsilonGreedyPolicy : public Policy {
   /**
    * Default epsilon value
    */
-  static constexpr const double kDefaultEpsilon = 0.1;
+  static constexpr const double K_DEFAULT_EPSILON = 0.1;
 
   /**
    * Constructor
@@ -79,14 +79,14 @@ class EpsilonGreedyPolicy : public Policy {
   explicit EpsilonGreedyPolicy(double epsilon, Kind kind = Kind::EpsilonGreedy)
       : Policy(kind), epsilon_(epsilon), real_(0, 1) {}
 
-  u32 NextAction(Agent *agent) override;
+  uint32_t NextAction(Agent *agent) override;
 
  protected:
   /**
    * Set the epsilon value
    * @param epsilon new epsilon value
    */
-  void set_epsilon(const double epsilon) { epsilon_ = epsilon; }
+  void SetEpsilon(const double epsilon) { epsilon_ = epsilon; }
 
  private:
   double epsilon_;
@@ -129,7 +129,7 @@ class UCBPolicy : public Policy {
   /**
    * Default ucb hyperparameter.
    */
-  static constexpr const double kDefaultUCBHyperParam = 1.0;
+  static constexpr const double K_DEFAULT_UCB_HYPER_PARAM = 1.0;
 
   /**
    * Constructor
@@ -137,7 +137,7 @@ class UCBPolicy : public Policy {
    */
   explicit UCBPolicy(double c) : Policy(Kind::UCB), c_(c) {}
 
-  u32 NextAction(Agent *agent) override;
+  uint32_t NextAction(Agent *agent) override;
 
  private:
   // Hyperparameter that decides the weight of the penalty term.
@@ -154,12 +154,12 @@ class FixedActionPolicy : public Policy {
    * Constructor
    * @param action action to take
    */
-  explicit FixedActionPolicy(u32 action) : Policy(Kind::FixedAction), action_(action) {}
+  explicit FixedActionPolicy(uint32_t action) : Policy(Kind::FixedAction), action_(action) {}
 
-  u32 NextAction(Agent *agent) override { return action_; }
+  uint32_t NextAction(Agent *agent) override { return action_; }
 
  private:
-  u32 action_;
+  uint32_t action_;
 };
 
 /**
@@ -173,7 +173,7 @@ class AnnealingEpsilonGreedyPolicy : public EpsilonGreedyPolicy {
    */
   AnnealingEpsilonGreedyPolicy() : EpsilonGreedyPolicy(Kind::AnnealingEpsilonGreedy) {}
 
-  u32 NextAction(Agent *agent) override;
+  uint32_t NextAction(Agent *agent) override;
 };
 
 }  // namespace terrier::execution::bandit

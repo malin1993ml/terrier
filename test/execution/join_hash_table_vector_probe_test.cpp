@@ -17,10 +17,10 @@
 namespace terrier::execution::sql::test {
 
 /// This is the tuple we insert into the hash table
-template <u8 N>
+template <uint8_t N>
 struct Tuple {
-  u32 build_key;
-  u32 aux[N];
+  uint32_t build_key_;
+  uint32_t aux_[N];
 };
 
 class JoinHashTableVectorProbeTest : public SqlBasedTest {
@@ -52,31 +52,31 @@ class JoinHashTableVectorProbeTest : public SqlBasedTest {
     for (const auto &col : schema.GetColumns()) {
       col_oids.emplace_back(col.Oid());
     }
-    auto initializer_map = sql_table->InitializerForProjectedColumns(col_oids, kDefaultVectorSize);
 
-    buffer_ = common::AllocationUtil::AllocateAligned(initializer_map.first.ProjectedColumnsSize());
-    projected_columns_ = initializer_map.first.Initialize(buffer_);
-    projected_columns_->SetNumTuples(kDefaultVectorSize);
+    auto pc_init = sql_table->InitializerForProjectedColumns(col_oids, common::Constants::K_DEFAULT_VECTOR_SIZE);
+    buffer_ = common::AllocationUtil::AllocateAligned(pc_init.ProjectedColumnsSize());
+    projected_columns_ = pc_init.Initialize(buffer_);
+    projected_columns_->SetNumTuples(common::Constants::K_DEFAULT_VECTOR_SIZE);
   }
 
   // Delete allocated objects and remove the created table.
   ~JoinHashTableVectorProbeTest() override { delete[] buffer_; }
 
-  MemoryPool *memory() { return &memory_; }
+  MemoryPool *Memory() { return &memory_; }
 
   storage::ProjectedColumns *GetProjectedColumns() { return projected_columns_; }
 
  protected:
-  template <u8 N, typename F>
-  std::unique_ptr<const JoinHashTable> InsertAndBuild(bool concise, u32 num_tuples, F &&key_gen) {
-    auto jht = std::make_unique<JoinHashTable>(memory(), sizeof(Tuple<N>), concise);
+  template <uint8_t N, typename F>
+  std::unique_ptr<const JoinHashTable> InsertAndBuild(bool concise, uint32_t num_tuples, F &&key_gen) {
+    auto jht = std::make_unique<JoinHashTable>(Memory(), sizeof(Tuple<N>), concise);
 
     // Insert
-    for (u32 i = 0; i < num_tuples; i++) {
+    for (uint32_t i = 0; i < num_tuples; i++) {
       auto key = key_gen();
-      auto hash = util::Hasher::Hash(reinterpret_cast<const u8 *>(&key), sizeof(key));
+      auto hash = util::Hasher::Hash(reinterpret_cast<const uint8_t *>(&key), sizeof(key));
       auto *tuple = reinterpret_cast<Tuple<N> *>(jht->AllocInputTuple(hash));
-      tuple->build_key = key;
+      tuple->build_key_ = key;
     }
 
     // Build
@@ -86,19 +86,19 @@ class JoinHashTableVectorProbeTest : public SqlBasedTest {
     return jht;
   }
 
-  template <u8 N>
+  template <uint8_t N>
   static hash_t HashTupleInPCI(ProjectedColumnsIterator *pci) noexcept {
-    const auto *key_ptr = pci->Get<u32, false>(0, nullptr);
-    return util::Hasher::Hash(reinterpret_cast<const u8 *>(key_ptr), sizeof(Tuple<N>::build_key));
+    const auto *key_ptr = pci->Get<uint32_t, false>(0, nullptr);
+    return util::Hasher::Hash(reinterpret_cast<const uint8_t *>(key_ptr), sizeof(Tuple<N>::build_key_));
   }
 
   /**
    * The function to determine whether two tuples have equivalent keys
    */
-  template <u8 N>
+  template <uint8_t N>
   static bool CmpTupleInPCI(const void *table_tuple, ProjectedColumnsIterator *pci) noexcept {
-    auto lhs_key = reinterpret_cast<const Tuple<N> *>(table_tuple)->build_key;
-    auto rhs_key = *pci->Get<u32, false>(0, nullptr);
+    auto lhs_key = reinterpret_cast<const Tuple<N> *>(table_tuple)->build_key_;
+    auto rhs_key = *pci->Get<uint32_t, false>(0, nullptr);
     return lhs_key == rhs_key;
   }
 
@@ -112,36 +112,36 @@ class JoinHashTableVectorProbeTest : public SqlBasedTest {
 
 // Sequential number functor
 struct Seq {
-  u32 c;
-  explicit Seq(u32 cc) : c(cc) {}
-  u32 operator()() noexcept { return c++; }
+  uint32_t c_;
+  explicit Seq(uint32_t cc) : c_(cc) {}
+  uint32_t operator()() noexcept { return c_++; }
 };
 
 struct Range {
-  std::random_device random;
-  std::uniform_int_distribution<u32> dist;
-  Range(u32 min, u32 max) : dist(min, max) {}
-  u32 operator()() noexcept { return dist(random); }
+  std::random_device random_;
+  std::uniform_int_distribution<uint32_t> dist_;
+  Range(uint32_t min, uint32_t max) : dist_(min, max) {}
+  uint32_t operator()() noexcept { return dist_(random_); }
 };
 
 // Random number functor
 struct Rand {
-  std::random_device random;
+  std::random_device random_;
   Rand() = default;
-  u32 operator()() noexcept { return random(); }
+  uint32_t operator()() noexcept { return random_(); }
 };
 
 // NOLINTNEXTLINE
 TEST_F(JoinHashTableVectorProbeTest, SimpleGenericLookupTest) {
-  constexpr const u8 N = 1;
-  constexpr const u32 num_build = 1000;
-  constexpr const u32 num_probe = num_build * 10;
+  constexpr const uint8_t n = 1;
+  constexpr const uint32_t num_build = 1000;
+  constexpr const uint32_t num_probe = num_build * 10;
 
   // Create test JHT
-  auto jht = InsertAndBuild<N>(/*concise*/ false, num_build, Seq(0));
+  auto jht = InsertAndBuild<n>(/*concise*/ false, num_build, Seq(0));
 
   // Create test probe input
-  auto probe_keys = std::vector<u32>(num_probe);
+  auto probe_keys = std::vector<uint32_t>(num_probe);
   std::generate(probe_keys.begin(), probe_keys.end(), Range(0, num_build - 1));
 
   auto *projected_columns = GetProjectedColumns();
@@ -151,25 +151,25 @@ TEST_F(JoinHashTableVectorProbeTest, SimpleGenericLookupTest) {
   JoinHashTableVectorProbe lookup(*jht);
 
   // Loop over all matches
-  u32 count = 0;
-  for (u32 i = 0; i < num_probe; i += projected_columns->MaxTuples()) {
-    u32 size = std::min(projected_columns->MaxTuples(), num_probe - i);
+  uint32_t count = 0;
+  for (uint32_t i = 0; i < num_probe; i += projected_columns->MaxTuples()) {
+    uint32_t size = std::min(projected_columns->MaxTuples(), num_probe - i);
 
     // Setup Projected Column
     projected_columns->SetNumTuples(size);
-    std::memcpy(projected_columns->ColumnStart(0), &probe_keys[i], size * sizeof(u32));
+    std::memcpy(projected_columns->ColumnStart(0), &probe_keys[i], size * sizeof(uint32_t));
     pci.SetProjectedColumn(projected_columns);
 
     // Lookup
-    lookup.Prepare(&pci, HashTupleInPCI<N>);
+    lookup.Prepare(&pci, HashTupleInPCI<n>);
 
     // Iterate all
-    while (const auto *entry = lookup.GetNextOutput(&pci, CmpTupleInPCI<N>)) {
+    while (const auto *entry = lookup.GetNextOutput(&pci, CmpTupleInPCI<n>)) {
       count++;
-      auto ht_key = entry->PayloadAs<Tuple<N>>()->build_key;
-      // NOTE: this would break if the columns had different sizes since the
+      auto ht_key = entry->PayloadAs<Tuple<n>>()->build_key_;
+      // NOTE: this would break if the columns had different sizes_ since the
       // storage layer might reorder them.
-      auto probe_key = *pci.Get<u32, false>(0, nullptr);
+      auto probe_key = *pci.Get<uint32_t, false>(0, nullptr);
       EXPECT_EQ(ht_key, probe_key);
     }
   }
@@ -180,15 +180,15 @@ TEST_F(JoinHashTableVectorProbeTest, SimpleGenericLookupTest) {
 // NOLINTNEXTLINE
 TEST_F(JoinHashTableVectorProbeTest, DISABLED_PerfLookupTest) {
   auto bench = [this](bool concise) {
-    constexpr const u8 N = 1;
-    constexpr const u32 num_build = 5000000;
-    constexpr const u32 num_probe = num_build * 10;
+    constexpr const uint8_t n = 1;
+    constexpr const uint32_t num_build = 5000000;
+    constexpr const uint32_t num_probe = num_build * 10;
 
     // Create test JHT
-    auto jht = InsertAndBuild<N>(concise, num_build, Seq(0));
+    auto jht = InsertAndBuild<n>(concise, num_build, Seq(0));
 
     // Create test probe input
-    auto probe_keys = std::vector<u32>(num_probe);
+    auto probe_keys = std::vector<uint32_t>(num_probe);
     std::generate(probe_keys.begin(), probe_keys.end(), Range(0, num_build - 1));
 
     auto *projected_columns = GetProjectedColumns();
@@ -201,30 +201,30 @@ TEST_F(JoinHashTableVectorProbeTest, DISABLED_PerfLookupTest) {
     timer.Start();
 
     // Loop over all matches
-    u32 count = 0;
-    for (u32 i = 0; i < num_probe; i += kDefaultVectorSize) {
-      u32 size = std::min(kDefaultVectorSize, num_probe - i);
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < num_probe; i += common::Constants::K_DEFAULT_VECTOR_SIZE) {
+      uint32_t size = std::min(common::Constants::K_DEFAULT_VECTOR_SIZE, num_probe - i);
 
       // Setup Projected Column
       projected_columns->SetNumTuples(size);
-      std::memcpy(projected_columns->ColumnStart(0), &probe_keys[i], size * sizeof(u32));
+      std::memcpy(projected_columns->ColumnStart(0), &probe_keys[i], size * sizeof(uint32_t));
       pci.SetProjectedColumn(projected_columns);
 
       // Lookup
-      lookup.Prepare(&pci, HashTupleInPCI<N>);
+      lookup.Prepare(&pci, HashTupleInPCI<n>);
 
       // Iterate all
-      while (const auto *entry = lookup.GetNextOutput(&pci, CmpTupleInPCI<N>)) {
+      while (const auto *entry = lookup.GetNextOutput(&pci, CmpTupleInPCI<n>)) {
         (void)entry;
         count++;
       }
     }
 
     timer.Stop();
-    auto mtps = (num_probe / timer.elapsed()) / 1000.0;
+    auto mtps = (num_probe / timer.Elapsed()) / 1000.0;
     EXECUTION_LOG_INFO("========== {} ==========", concise ? "Concise" : "Generic");
     EXECUTION_LOG_INFO("# Probes    : {}", num_probe)
-    EXECUTION_LOG_INFO("Probe Time  : {} ms ({:.2f} Mtps)", timer.elapsed(), mtps);
+    EXECUTION_LOG_INFO("Probe Time  : {} ms ({:.2f} Mtps)", timer.Elapsed(), mtps);
   };
 
   bench(false);

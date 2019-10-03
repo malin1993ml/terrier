@@ -69,14 +69,14 @@ class Context {
    * @param builtin builtin to find
    * @return the identifier of the builtin function
    */
-  ast::Identifier GetBuiltinFunction(Builtin builtin);
+  Identifier GetBuiltinFunction(Builtin builtin);
 
   /**
    * Get the identifier of a builtin type
    * @param kind kind of the builtin to find
    * @return the identifier of the builtin
    */
-  ast::Identifier GetBuiltinType(BuiltinType::Kind kind);
+  Identifier GetBuiltinType(BuiltinType::Kind kind);
 
   // -------------------------------------------------------
   // Simple accessors
@@ -86,22 +86,22 @@ class Context {
   /**
    * @return the implementation
    */
-  Implementation *impl() const { return impl_.get(); }
+  Implementation *Impl() const { return impl_.get(); }
 
   /**
    * @return the ast node factory
    */
-  AstNodeFactory *node_factory() const { return node_factory_.get(); }
+  AstNodeFactory *NodeFactory() const { return node_factory_.get(); }
 
   /**
    * @return the error reporter
    */
-  sema::ErrorReporter *error_reporter() const { return error_reporter_; }
+  sema::ErrorReporter *GetErrorReporter() const { return error_reporter_; }
 
   /**
    * @return the region used for allocation
    */
-  util::Region *region() const { return region_; }
+  util::Region *Region() const { return region_; }
 
  private:
   // Region allocator for all Ast objects this context needs

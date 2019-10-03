@@ -15,19 +15,18 @@ class AstTraversalVisitorTest : public TplTest {
  public:
   AstTraversalVisitorTest() : region_("ast_test"), pos_() {}
 
-  util::Region *region() { return &region_; }
+  util::Region *Region() { return &region_; }
 
-  const SourcePosition &empty_pos() const { return pos_; }
+  const SourcePosition &EmptyPos() const { return pos_; }
 
   AstNode *GenerateAst(const std::string &src) {
-    sema::ErrorReporter error(region());
-    ast::Context ctx(region(), &error);
+    sema::ErrorReporter error(Region());
+    ast::Context ctx(Region(), &error);
 
     parsing::Scanner scanner(src);
     parsing::Parser parser(&scanner, &ctx);
 
     if (error.HasErrors()) {
-      error.PrintErrors();
       return nullptr;
     }
 
@@ -37,7 +36,6 @@ class AstTraversalVisitorTest : public TplTest {
     auto check = sema.Run(root);
 
     if (error.HasErrors()) {
-      error.PrintErrors();
       return nullptr;
     }
 
@@ -63,18 +61,18 @@ class ForFinder : public AstTraversalVisitor<ForFinder<FindInfinite>> {
 
   void VisitForStmt(ast::ForStmt *stmt) {
     if constexpr (FindInfinite) {
-      bool is_finite_for = (stmt->condition() == nullptr);
-      num_fors_ += static_cast<u32>(is_finite_for);
+      bool is_finite_for = (stmt->Condition() == nullptr);
+      num_fors_ += static_cast<uint32_t>(is_finite_for);
     } else {  // NOLINT
       num_fors_++;
     }
     AstTraversalVisitor<SelfT>::VisitForStmt(stmt);
   }
 
-  u32 num_fors() const { return num_fors_; }
+  uint32_t NumFors() const { return num_fors_; }
 
  private:
-  u32 num_fors_;
+  uint32_t num_fors_;
 };
 
 }  // namespace
@@ -94,7 +92,7 @@ TEST_F(AstTraversalVisitorTest, CountForLoopsTest) {
     ForFinder finder(root);
     finder.Run();
 
-    EXPECT_EQ(0u, finder.num_fors());
+    EXPECT_EQ(0u, finder.NumFors());
   }
 
   // 1 for-loop
@@ -110,7 +108,7 @@ TEST_F(AstTraversalVisitorTest, CountForLoopsTest) {
     ForFinder finder(root);
     finder.Run();
 
-    EXPECT_EQ(1u, finder.num_fors());
+    EXPECT_EQ(1u, finder.NumFors());
   }
 
   // 4 nested for-loops
@@ -135,8 +133,8 @@ TEST_F(AstTraversalVisitorTest, CountForLoopsTest) {
     finder.Run();
     inf_finder.Run();
 
-    EXPECT_EQ(4u, finder.num_fors());
-    EXPECT_EQ(3u, inf_finder.num_fors());
+    EXPECT_EQ(4u, finder.NumFors());
+    EXPECT_EQ(3u, inf_finder.NumFors());
   }
 
   // 4 sequential for-loops
@@ -155,7 +153,7 @@ TEST_F(AstTraversalVisitorTest, CountForLoopsTest) {
     ForFinder finder(root);
     finder.Run();
 
-    EXPECT_EQ(4u, finder.num_fors());
+    EXPECT_EQ(4u, finder.NumFors());
   }
 }
 
@@ -171,6 +169,7 @@ class FunctionFinder : public AstTraversalVisitor<FunctionFinder<CountLiterals>>
   explicit FunctionFinder(ast::AstNode *root) : AstTraversalVisitor<SelfT>(root), num_funcs_(0) {}
 
   void VisitFunctionDecl(ast::FunctionDecl *decl) {
+    // NOLINTNEXTLINE: bugprone-suspicious-semicolon: seems like a false positive because of constexpr
     if constexpr (!CountLiterals) {
       num_funcs_++;
     }
@@ -178,16 +177,17 @@ class FunctionFinder : public AstTraversalVisitor<FunctionFinder<CountLiterals>>
   }
 
   void VisitFunctionLitExpr(ast::FunctionLitExpr *expr) {
+    // NOLINTNEXTLINE: bugprone-suspicious-semicolon: seems like a false positive because of constexpr
     if constexpr (CountLiterals) {
       num_funcs_++;
     }
     AstTraversalVisitor<SelfT>::VisitFunctionLitExpr(expr);
   }
 
-  u32 num_funcs() const { return num_funcs_; }
+  uint32_t NumFuncs() const { return num_funcs_; }
 
  private:
-  u32 num_funcs_;
+  uint32_t num_funcs_;
 };
 
 }  // namespace
@@ -209,8 +209,8 @@ TEST_F(AstTraversalVisitorTest, CountFunctionsTest) {
     find_func_decls.Run();
     find_all_funcs.Run();
 
-    EXPECT_EQ(2u, find_func_decls.num_funcs());
-    EXPECT_EQ(2u, find_all_funcs.num_funcs());
+    EXPECT_EQ(2u, find_func_decls.NumFuncs());
+    EXPECT_EQ(2u, find_all_funcs.NumFuncs());
   }
 
   // Function declarations and literals
@@ -230,8 +230,8 @@ TEST_F(AstTraversalVisitorTest, CountFunctionsTest) {
     find_func_decls.Run();
     find_all_funcs.Run();
 
-    EXPECT_EQ(2u, find_func_decls.num_funcs());
-    EXPECT_EQ(3u, find_all_funcs.num_funcs());
+    EXPECT_EQ(2u, find_func_decls.NumFuncs());
+    EXPECT_EQ(3u, find_all_funcs.NumFuncs());
   }
 }
 
@@ -246,10 +246,10 @@ class IfFinder : public AstTraversalVisitor<IfFinder> {
     AstTraversalVisitor<IfFinder>::VisitIfStmt(stmt);
   }
 
-  u32 num_ifs() const { return num_ifs_; }
+  uint32_t NumIfs() const { return num_ifs_; }
 
  private:
-  u32 num_ifs_;
+  uint32_t num_ifs_;
 };
 
 }  // namespace
@@ -278,7 +278,7 @@ TEST_F(AstTraversalVisitorTest, CountIfTest) {
 
     finder.Run();
 
-    EXPECT_EQ(6u, finder.num_ifs());
+    EXPECT_EQ(6u, finder.NumIfs());
   }
 
   // Serial Ifs
@@ -303,7 +303,7 @@ TEST_F(AstTraversalVisitorTest, CountIfTest) {
 
     finder.Run();
 
-    EXPECT_EQ(5u, finder.num_ifs());
+    EXPECT_EQ(5u, finder.NumIfs());
   }
 }
 

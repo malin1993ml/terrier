@@ -2,7 +2,7 @@
 
 #include "execution/sql/hash_table_entry.h"
 #include "execution/sql/projected_columns_iterator.h"
-#include "execution/util/common.h"
+#include "execution/util/execution_common.h"
 
 namespace terrier::execution::sql {
 
@@ -11,7 +11,7 @@ class JoinHashTable;
 /**
  * Helper class to perform vectorized lookups into a JoinHashTable
  */
-class JoinHashTableVectorProbe {
+class EXPORT JoinHashTableVectorProbe {
  public:
   /**
    * Function to hash the tuple the iterator is currently pointing at.
@@ -48,11 +48,11 @@ class JoinHashTableVectorProbe {
   // The table we're probing
   const JoinHashTable &table_;
   // The current index in the entries output we're iterating over
-  u16 match_idx_;
+  uint16_t match_idx_;
   // The vector of computed hashes
-  hash_t hashes_[kDefaultVectorSize];
+  hash_t hashes_[common::Constants::K_DEFAULT_VECTOR_SIZE];
   // The vector of entries
-  const HashTableEntry *entries_[kDefaultVectorSize];
+  const HashTableEntry *entries_[common::Constants::K_DEFAULT_VECTOR_SIZE];
 };
 
 // ---------------------------------------------------------
@@ -63,20 +63,20 @@ class JoinHashTableVectorProbe {
 // reduce function call overhead.
 inline const HashTableEntry *JoinHashTableVectorProbe::GetNextOutput(ProjectedColumnsIterator *const pci,
                                                                      const KeyEqFn key_eq_fn) {
-  TPL_ASSERT(pci != nullptr, "No input PCI!");
-  TPL_ASSERT(match_idx_ < pci->num_selected(), "Continuing past iteration!");
+  TERRIER_ASSERT(pci != nullptr, "No input PCI!");
+  TERRIER_ASSERT(match_idx_ < pci->NumSelected(), "Continuing past iteration!");
 
   while (true) {
     // Continue along current chain until we find a match
     while (const auto *entry = entries_[match_idx_]) {
-      entries_[match_idx_] = entry->next;
-      if (entry->hash == hashes_[match_idx_] && key_eq_fn(entry->payload, pci)) {
+      entries_[match_idx_] = entry->next_;
+      if (entry->hash_ == hashes_[match_idx_] && key_eq_fn(entry->payload_, pci)) {
         return entry;
       }
     }
 
     // No match found, move to the next probe tuple index
-    if (++match_idx_ >= pci->num_selected()) {
+    if (++match_idx_ >= pci->NumSelected()) {
       break;
     }
 

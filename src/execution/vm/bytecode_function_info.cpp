@@ -4,8 +4,8 @@
 #include <utility>
 #include <vector>
 
+#include "common/math_util.h"
 #include "execution/ast/type.h"
-#include "execution/util/math_util.h"
 
 namespace terrier::execution::vm {
 
@@ -13,8 +13,8 @@ namespace terrier::execution::vm {
 // Local Information
 // ---------------------------------------------------------
 
-LocalInfo::LocalInfo(std::string name, ast::Type *type, u32 offset, LocalInfo::Kind kind) noexcept
-    : name_(std::move(name)), type_(type), offset_(offset), size_(type->size()), kind_(kind) {}
+LocalInfo::LocalInfo(std::string name, ast::Type *type, uint32_t offset, LocalInfo::Kind kind) noexcept
+    : name_(std::move(name)), type_(type), offset_(offset), size_(type->Size()), kind_(kind) {}
 
 // ---------------------------------------------------------
 // Function Information
@@ -32,17 +32,17 @@ FunctionInfo::FunctionInfo(FunctionId id, std::string name, ast::FunctionType *f
       num_temps_(0) {}
 
 LocalVar FunctionInfo::NewLocal(ast::Type *type, const std::string &name, LocalInfo::Kind kind) {
-  TPL_ASSERT(!name.empty(), "Local name cannot be empty");
+  TERRIER_ASSERT(!name.empty(), "Local name cannot be empty");
 
   // Bump size to account for the alignment of the new local
-  if (!util::MathUtil::IsAligned(frame_size_, type->alignment())) {
-    frame_size_ = util::MathUtil::AlignTo(frame_size_, type->alignment());
+  if (!common::MathUtil::IsAligned(frame_size_, type->Alignment())) {
+    frame_size_ = common::MathUtil::AlignTo(frame_size_, type->Alignment());
   }
 
-  const auto offset = static_cast<u32>(frame_size_);
+  const auto offset = static_cast<uint32_t>(frame_size_);
   locals_.emplace_back(name, type, offset, kind);
 
-  frame_size_ += type->size();
+  frame_size_ += type->Size();
 
   return LocalVar(offset, LocalVar::AddressMode::Address);
 }
@@ -50,7 +50,7 @@ LocalVar FunctionInfo::NewLocal(ast::Type *type, const std::string &name, LocalI
 LocalVar FunctionInfo::NewParameterLocal(ast::Type *type, const std::string &name) {
   const LocalVar local = NewLocal(type, name, LocalInfo::Kind::Parameter);
   num_params_++;
-  params_size_ = frame_size();
+  params_size_ = FrameSize();
   return local;
 }
 
@@ -65,15 +65,15 @@ LocalVar FunctionInfo::NewLocal(ast::Type *type, const std::string &name) {
 
 LocalVar FunctionInfo::GetReturnValueLocal() const {
   // This invocation only makes sense if the function actually returns a value
-  TPL_ASSERT(!func_type_->return_type()->IsNilType(),
-             "Cannot lookup local slot for function that does not have return value");
+  TERRIER_ASSERT(!func_type_->ReturnType()->IsNilType(),
+                 "Cannot lookup local slot for function that does not have return value");
   return LocalVar(0u, LocalVar::AddressMode::Address);
 }
 
 LocalVar FunctionInfo::LookupLocal(const std::string &name) const {
-  for (const auto &local_info : locals()) {
-    if (local_info.name() == name) {
-      return LocalVar(local_info.offset(), LocalVar::AddressMode::Address);
+  for (const auto &local_info : Locals()) {
+    if (local_info.Name() == name) {
+      return LocalVar(local_info.Offset(), LocalVar::AddressMode::Address);
     }
   }
 
@@ -81,8 +81,8 @@ LocalVar FunctionInfo::LookupLocal(const std::string &name) const {
 }
 
 const LocalInfo *FunctionInfo::LookupLocalInfoByName(const std::string &name) const {
-  for (const auto &local_info : locals()) {
-    if (local_info.name() == name) {
+  for (const auto &local_info : Locals()) {
+    if (local_info.Name() == name) {
       return &local_info;
     }
   }
@@ -90,9 +90,9 @@ const LocalInfo *FunctionInfo::LookupLocalInfoByName(const std::string &name) co
   return nullptr;
 }
 
-const LocalInfo *FunctionInfo::LookupLocalInfoByOffset(u32 offset) const {
-  for (const auto &local_info : locals()) {
-    if (local_info.offset() == offset) {
+const LocalInfo *FunctionInfo::LookupLocalInfoByOffset(uint32_t offset) const {
+  for (const auto &local_info : Locals()) {
+    if (local_info.Offset() == offset) {
       return &local_info;
     }
   }

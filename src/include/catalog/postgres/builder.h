@@ -127,12 +127,6 @@ class Builder {
 
   /**
    * @param db oid in which the indexed table exists
-   * @return schema object for the class (index and table) index on pg_attribute
-   */
-  static IndexSchema GetColumnClassIndexSchema(db_oid_t db);
-
-  /**
-   * @param db oid in which the indexed table exists
    * @return schema object for the oid index on pg_type
    */
   static IndexSchema GetTypeOidIndexSchema(db_oid_t db);
@@ -192,8 +186,9 @@ class Builder {
    * @return pointer to the new index
    */
   static storage::index::Index *BuildUniqueIndex(const IndexSchema &key_schema, index_oid_t oid) {
+    TERRIER_ASSERT(key_schema.Unique(), "KeySchema must represent a unique index.");
     storage::index::IndexBuilder index_builder;
-    index_builder.SetOid(oid).SetKeySchema(key_schema).SetConstraintType(storage::index::ConstraintType::UNIQUE);
+    index_builder.SetKeySchema(key_schema);
     return index_builder.Build();
   }
 
@@ -204,8 +199,9 @@ class Builder {
    * @return pointer to the new index
    */
   static storage::index::Index *BuildLookupIndex(const IndexSchema &key_schema, index_oid_t oid) {
+    TERRIER_ASSERT(!(key_schema.Unique()), "KeySchema must represent a non-unique index.");
     storage::index::IndexBuilder index_builder;
-    index_builder.SetOid(oid).SetKeySchema(key_schema).SetConstraintType(storage::index::ConstraintType::DEFAULT);
+    index_builder.SetKeySchema(key_schema);
     return index_builder.Build();
   }
 };

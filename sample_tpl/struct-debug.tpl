@@ -1,9 +1,11 @@
+// Test struct fields
+
 struct S {
-  a : int
-  b : int
+  a : int64
+  b : int64
 }
 
-fun main() -> int {
+fun main() -> int64 {
   var s : S
   s.a = 0
   for (s.a < 100000) {

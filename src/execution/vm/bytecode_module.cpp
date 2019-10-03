@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <iomanip>
-#include <iostream>
 #include <numeric>
 #include <string>
 #include <utility>
@@ -12,35 +11,35 @@
 
 namespace terrier::execution::vm {
 
-BytecodeModule::BytecodeModule(std::string name, std::vector<u8> &&code, std::vector<FunctionInfo> &&functions)
+BytecodeModule::BytecodeModule(std::string name, std::vector<uint8_t> &&code, std::vector<FunctionInfo> &&functions)
     : name_(std::move(name)), code_(std::move(code)), functions_(std::move(functions)) {}
 
 namespace {
 
 void PrettyPrintFuncInfo(std::ostream *os, const FunctionInfo &func) {
-  *os << "Function " << func.id() << " <" << func.name() << ">:" << std::endl;
-  *os << "  Frame size " << func.frame_size() << " bytes (" << func.num_params() << " parameter"
-      << (func.num_params() > 1 ? "s, " : ", ") << func.locals().size() << " locals)" << std::endl;
+  *os << "Function " << func.Id() << " <" << func.Name() << ">:" << std::endl;
+  *os << "  Frame size " << func.FrameSize() << " bytes (" << func.NumParams() << " parameter"
+      << (func.NumParams() > 1 ? "s, " : ", ") << func.Locals().size() << " locals)" << std::endl;
 
-  u64 max_local_len = 0;
-  for (const auto &local : func.locals()) {
-    max_local_len = std::max(max_local_len, static_cast<u64>(local.name().length()));
+  uint64_t max_local_len = 0;
+  for (const auto &local : func.Locals()) {
+    max_local_len = std::max(max_local_len, static_cast<uint64_t>(local.Name().length()));
   }
-  for (const auto &local : func.locals()) {
-    if (local.is_parameter()) {
+  for (const auto &local : func.Locals()) {
+    if (local.IsParameter()) {
       *os << "    param  ";
     } else {
       *os << "    local  ";
     }
-    *os << std::setw(static_cast<int>(max_local_len)) << std::right << local.name() << ":  offset=" << std::setw(7)
-        << std::left << local.offset() << " size=" << std::setw(7) << std::left << local.size()
-        << " align=" << std::setw(7) << std::left << local.type()->alignment() << " type=" << std::setw(7) << std::left
-        << ast::Type::ToString(local.type()) << std::endl;
+    *os << std::setw(static_cast<int>(max_local_len)) << std::right << local.Name() << ":  offset=" << std::setw(7)
+        << std::left << local.Offset() << " size=" << std::setw(7) << std::left << local.Size()
+        << " align=" << std::setw(7) << std::left << local.GetType()->Alignment() << " type=" << std::setw(7)
+        << std::left << ast::Type::ToString(local.GetType()) << std::endl;
   }
 }
 
 void PrettyPrintFuncCode(std::ostream *os, const FunctionInfo &func, BytecodeIterator *iter) {
-  const u32 max_inst_len = Bytecodes::MaxBytecodeNameLength();
+  const uint32_t max_inst_len = Bytecodes::MaxBytecodeNameLength();
   for (; !iter->Done(); iter->Advance()) {
     Bytecode bytecode = iter->CurrentBytecode();
 

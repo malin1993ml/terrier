@@ -12,9 +12,9 @@ namespace terrier::execution::sql::test {
 class GenericHashTableTest : public TplTest {};
 
 struct TestEntry : public HashTableEntry {
-  u32 key{0}, value{0};
+  uint32_t key_{0}, value_{0};
   TestEntry() : HashTableEntry() {}
-  TestEntry(u32 key, u32 value) : HashTableEntry(), key(key), value(value) {}
+  TestEntry(uint32_t key, uint32_t value) : HashTableEntry(), key_(key), value_(value) {}
 };
 
 // NOLINTNEXTLINE
@@ -70,9 +70,9 @@ TEST_F(GenericHashTableTest, SimpleIterationTest) {
   //       them all.
   //
 
-  using Key = u32;
+  using Key = uint32_t;
 
-  const u32 num_inserts = 500;
+  const uint32_t num_inserts = 500;
 
   std::random_device random;
 
@@ -80,11 +80,11 @@ TEST_F(GenericHashTableTest, SimpleIterationTest) {
 
   // The entries
   std::vector<TestEntry> entries;
-  for (u32 idx = 0; idx < num_inserts; idx++) {
+  for (uint32_t idx = 0; idx < num_inserts; idx++) {
     TestEntry entry(random(), 20);
-    entry.hash = util::Hasher::Hash(reinterpret_cast<const u8 *>(&entry.key), sizeof(entry.key));
+    entry.hash_ = util::Hasher::Hash(reinterpret_cast<const uint8_t *>(&entry.key_), sizeof(entry.key_));
 
-    reference[entry.key] = entry;
+    reference[entry.key_] = entry;
     entries.emplace_back(entry);
   }
 
@@ -93,20 +93,20 @@ TEST_F(GenericHashTableTest, SimpleIterationTest) {
   table.SetSize(1000);
 
   // Insert
-  for (u32 idx = 0; idx < num_inserts; idx++) {
+  for (uint32_t idx = 0; idx < num_inserts; idx++) {
     auto entry = &entries[idx];
-    table.Insert<false>(entry, entry->hash);
+    table.Insert<false>(entry, entry->hash_);
   }
 
   auto check = [&](auto &iter) {
-    u32 found_entries = 0;
+    uint32_t found_entries = 0;
     for (; iter.HasNext(); iter.Next()) {
       auto *row = reinterpret_cast<const TestEntry *>(iter.GetCurrentEntry());
       ASSERT_TRUE(row != nullptr);
-      auto ref_iter = reference.find(row->key);
+      auto ref_iter = reference.find(row->key_);
       ASSERT_NE(ref_iter, reference.end());
-      EXPECT_EQ(ref_iter->second.key, row->key);
-      EXPECT_EQ(ref_iter->second.value, row->value);
+      EXPECT_EQ(ref_iter->second.key_, row->key_);
+      EXPECT_EQ(ref_iter->second.value_, row->value_);
       found_entries++;
     }
     EXPECT_EQ(num_inserts, found_entries);
@@ -133,14 +133,14 @@ TEST_F(GenericHashTableTest, LongChainIterationTest) {
   //       all inserted entries.
   //
 
-  const u32 num_inserts = 500;
-  const u32 key = 10, value = 20;
+  const uint32_t num_inserts = 500;
+  const uint32_t key = 10, value = 20;
 
   // The entries
   std::vector<TestEntry> entries;
-  for (u32 idx = 0; idx < num_inserts; idx++) {
+  for (uint32_t idx = 0; idx < num_inserts; idx++) {
     TestEntry entry(key, value);
-    entry.hash = util::Hasher::Hash(reinterpret_cast<const u8 *>(&entry.key), sizeof(entry.key));
+    entry.hash_ = util::Hasher::Hash(reinterpret_cast<const uint8_t *>(&entry.key_), sizeof(entry.key_));
     entries.emplace_back(entry);
   }
 
@@ -149,18 +149,18 @@ TEST_F(GenericHashTableTest, LongChainIterationTest) {
   table.SetSize(1000);
 
   // Insert
-  for (u32 idx = 0; idx < num_inserts; idx++) {
+  for (uint32_t idx = 0; idx < num_inserts; idx++) {
     auto entry = &entries[idx];
-    table.Insert<false>(entry, entry->hash);
+    table.Insert<false>(entry, entry->hash_);
   }
 
   auto check = [&](auto &iter) {
-    u32 found_entries = 0;
+    uint32_t found_entries = 0;
     for (; iter.HasNext(); iter.Next()) {
       auto *row = reinterpret_cast<const TestEntry *>(iter.GetCurrentEntry());
       ASSERT_TRUE(row != nullptr);
-      EXPECT_EQ(key, row->key);
-      EXPECT_EQ(value, row->value);
+      EXPECT_EQ(key, row->key_);
+      EXPECT_EQ(value, row->value_);
       found_entries++;
     }
     EXPECT_EQ(num_inserts, found_entries);
@@ -176,64 +176,6 @@ TEST_F(GenericHashTableTest, LongChainIterationTest) {
     GenericHashTableVectorIterator<false> iter(table, &pool);
     check(iter);
   }
-}
-
-// NOLINTNEXTLINE
-TEST_F(GenericHashTableTest, DISABLED_PerfIterationTest) {
-  const u32 num_inserts = 5000000;
-
-  // The entries
-  std::vector<TestEntry> entries;
-
-  std::random_device random;
-  for (u32 idx = 0; idx < num_inserts; idx++) {
-    TestEntry entry(random(), 20);
-    entry.hash = util::Hasher::Hash(reinterpret_cast<const u8 *>(&entry.key), sizeof(entry.key));
-
-    entries.emplace_back(entry);
-  }
-
-  // The table
-  GenericHashTable table;
-  table.SetSize(num_inserts);
-
-  // Insert
-  for (u32 idx = 0; idx < num_inserts; idx++) {
-    auto entry = &entries[idx];
-    table.Insert<false>(entry, entry->hash);
-  }
-
-  auto check = [&](auto &iter) {
-    u32 sum = 0;
-    for (; iter.HasNext(); iter.Next()) {
-      auto *row = reinterpret_cast<const TestEntry *>(iter.GetCurrentEntry());
-      sum += row->value;
-    }
-    return sum;
-  };
-
-  u32 sum = 0;
-
-  double taat_ms = 0;
-#if 0
-  Bench(5, [&]() {
-    GenericHashTableIterator<false> iter(table);
-    sum = check(iter);
-  });
-#endif
-
-  EXECUTION_LOG_INFO("{}", sum);
-
-  sum = 0;
-  double vaat_ms = Bench(5, [&]() {
-    MemoryPool pool(nullptr);
-    GenericHashTableVectorIterator<false> iter(table, &pool);
-    sum = check(iter);
-  });
-
-  EXECUTION_LOG_INFO("{}", sum);
-
-  EXECUTION_LOG_INFO("TaaT: {:.2f}, VaaT: {:2f}", taat_ms, vaat_ms);
 }
 
 }  // namespace terrier::execution::sql::test

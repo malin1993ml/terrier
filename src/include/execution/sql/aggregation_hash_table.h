@@ -13,36 +13,35 @@ class HLL;
 
 namespace terrier::execution::sql {
 
-class ThreadStateContainer;
-
 // Forward declare
 class AggregationHashTableIterator;
+class ThreadStateContainer;
 class AggregationOverflowPartitionIterator;
 
 /**
  * The hash table used when performing aggregations
  */
-class AggregationHashTable {
+class EXPORT AggregationHashTable {
  public:
   /**
    * Default load factor
    */
-  static constexpr const float kDefaultLoadFactor = 0.7f;
+  static constexpr const float K_DEFAULT_LOAD_FACTOR = 0.7f;
 
   /**
    * Default initial size
    */
-  static constexpr const u32 kDefaultInitialTableSize = 256;
+  static constexpr const uint32_t K_DEFAULT_INITIAL_TABLE_SIZE = 256;
 
   /**
    * Default number of partitions
    */
-  static constexpr const u32 kDefaultNumPartitions = 512;
+  static constexpr const uint32_t K_DEFAULT_NUM_PARTITIONS = 512;
 
   /**
    * Default libcount precision
    */
-  static constexpr u32 kDefaultHLLPrecision = 10;
+  static constexpr uint32_t K_DEFAULT_HLL_PRECISION = 10;
 
   // -------------------------------------------------------
   // Callback functions to customize aggregations
@@ -100,12 +99,12 @@ class AggregationHashTable {
     /**
      * Number of hash table growth
      */
-    u64 num_growths = 0;
+    uint64_t num_growths_ = 0;
 
     /**
      * Number of flushes
      */
-    u64 num_flushes = 0;
+    uint64_t num_flushes_ = 0;
   };
 
   // -------------------------------------------------------
@@ -128,7 +127,7 @@ class AggregationHashTable {
    * @param payload_size The size of the elements in the hash table
    * @param initial_size The initial number of aggregates to support.
    */
-  AggregationHashTable(MemoryPool *memory, std::size_t payload_size, u32 initial_size);
+  AggregationHashTable(MemoryPool *memory, std::size_t payload_size, uint32_t initial_size);
 
   /**
    * This class cannot be copied or moved
@@ -221,18 +220,18 @@ class AggregationHashTable {
   /**
    * How many aggregates are in this table?
    */
-  u64 NumElements() const { return hash_table_.num_elements(); }
+  uint64_t NumElements() const { return hash_table_.NumElements(); }
 
   /**
    * Read-only access to hash table stats
    */
-  const Stats *stats() const { return &stats_; }
+  const Stats *GetStats() const { return &stats_; }
 
  private:
   friend class AggregationHashTableIterator;
 
   // Does the hash table need to grow?
-  bool NeedsToGrow() const { return hash_table_.num_elements() >= max_fill_; }
+  bool NeedsToGrow() const { return hash_table_.NumElements() >= max_fill_; }
 
   // Grow the hash table
   void Grow();
@@ -250,15 +249,16 @@ class AggregationHashTable {
   // Compute the hash value and perform the table lookup for all elements in the
   // input vector projections.
   template <bool PCIIsFiltered>
-  void ProcessBatchImpl(ProjectedColumnsIterator *iters[], u32 num_elems, hash_t hashes[], HashTableEntry *entries[],
-                        HashFn hash_fn, KeyEqFn key_eq_fn, InitAggFn init_agg_fn, AdvanceAggFn advance_agg_fn);
+  void ProcessBatchImpl(ProjectedColumnsIterator *iters[], uint32_t num_elems, hash_t hashes[],
+                        HashTableEntry *entries[], HashFn hash_fn, KeyEqFn key_eq_fn, InitAggFn init_agg_fn,
+                        AdvanceAggFn advance_agg_fn);
 
   // Called from ProcessBatch() to lookup a batch of entries. When the function
   // returns, the hashes vector will contain the hash values of all elements in
   // the input vector, and entries will contain a pointer to the associated
   // element's group aggregate, or null if no group exists.
   template <bool PCIIsFiltered>
-  void LookupBatch(ProjectedColumnsIterator *iters[], u32 num_elems, hash_t hashes[], HashTableEntry *entries[],
+  void LookupBatch(ProjectedColumnsIterator *iters[], uint32_t num_elems, hash_t hashes[], HashTableEntry *entries[],
                    HashFn hash_fn, KeyEqFn key_eq_fn) const;
 
   // Called from LookupBatch() to compute and fill the hashes input vector with
@@ -268,33 +268,33 @@ class AggregationHashTable {
   // pointer to the first (of potentially many) elements in the hash table that
   // match the input hash value.
   template <bool PCIIsFiltered>
-  void ComputeHashAndLoadInitial(ProjectedColumnsIterator *iters[], u32 num_elems, hash_t hashes[],
+  void ComputeHashAndLoadInitial(ProjectedColumnsIterator *iters[], uint32_t num_elems, hash_t hashes[],
                                  HashTableEntry *entries[], HashFn hash_fn) const;
   template <bool PCIIsFiltered, bool Prefetch>
-  void ComputeHashAndLoadInitialImpl(ProjectedColumnsIterator *iters[], u32 num_elems, hash_t hashes[],
+  void ComputeHashAndLoadInitialImpl(ProjectedColumnsIterator *iters[], uint32_t num_elems, hash_t hashes[],
                                      HashTableEntry *entries[], HashFn hash_fn) const;
 
   // Called from LookupBatch() to follow the entry chain of candidate group
   // entries filtered through group_sel. Follows the chain and uses the key
   // equality function to resolve hash collisions.
   template <bool PCIIsFiltered>
-  void FollowNextLoop(ProjectedColumnsIterator *iters[], u32 num_elems, u32 group_sel[], const hash_t hashes[],
-                      HashTableEntry *entries[], KeyEqFn key_eq_fn) const;
+  void FollowNextLoop(ProjectedColumnsIterator *iters[], uint32_t num_elems, uint32_t group_sel[],
+                      const hash_t hashes[], HashTableEntry *entries[], KeyEqFn key_eq_fn) const;
 
   // Called from ProcessBatch() to create missing groups
   template <bool PCIIsFiltered>
-  void CreateMissingGroups(ProjectedColumnsIterator *iters[], u32 num_elems, const hash_t hashes[],
+  void CreateMissingGroups(ProjectedColumnsIterator *iters[], uint32_t num_elems, const hash_t hashes[],
                            HashTableEntry *entries[], KeyEqFn key_eq_fn, InitAggFn init_agg_fn);
 
   // Called from ProcessBatch() to update only the valid entries in the input
   // vector
   template <bool PCIIsFiltered>
-  void AdvanceGroups(ProjectedColumnsIterator *iters[], u32 num_elems, HashTableEntry *entries[],
+  void AdvanceGroups(ProjectedColumnsIterator *iters[], uint32_t num_elems, HashTableEntry *entries[],
                      AdvanceAggFn advance_agg_fn);
 
   // Called during partitioned scan to build an aggregation hash table over a
   // single partition.
-  AggregationHashTable *BuildTableOverPartition(void *query_state, u32 partition_idx);
+  AggregationHashTable *BuildTableOverPartition(void *query_state, uint32_t partition_idx);
 
  private:
   // Memory allocator.
@@ -333,16 +333,16 @@ class AggregationHashTable {
   // The number of elements that can be inserted into the main hash table before
   // we flush into the overflow partitions. We size this so that the entries
   // are roughly L2-sized.
-  u64 flush_threshold_;
+  uint64_t flush_threshold_;
   // The number of bits to shift the hash value to determine its overflow
   // partition.
-  u64 partition_shift_bits_;
+  uint64_t partition_shift_bits_;
 
   // Runtime stats.
   Stats stats_;
 
   // The maximum number of elements in the table before a resize.
-  u64 max_fill_;
+  uint64_t max_fill_;
 };
 
 // ---------------------------------------------------------
@@ -353,10 +353,10 @@ inline HashTableEntry *AggregationHashTable::LookupEntryInternal(hash_t hash, Ag
                                                                  const void *probe_tuple) const {
   HashTableEntry *entry = hash_table_.FindChainHead(hash);
   while (entry != nullptr) {
-    if (entry->hash == hash && key_eq_fn(entry->payload, probe_tuple)) {
+    if (entry->hash_ == hash && key_eq_fn(entry->payload_, probe_tuple)) {
       return entry;
     }
-    entry = entry->next;
+    entry = entry->next_;
   }
   return nullptr;
 }
@@ -364,7 +364,7 @@ inline HashTableEntry *AggregationHashTable::LookupEntryInternal(hash_t hash, Ag
 inline byte *AggregationHashTable::Lookup(hash_t hash, AggregationHashTable::KeyEqFn key_eq_fn,
                                           const void *probe_tuple) {
   auto *entry = LookupEntryInternal(hash, key_eq_fn, probe_tuple);
-  return (entry == nullptr ? nullptr : entry->payload);
+  return (entry == nullptr ? nullptr : entry->payload_);
 }
 
 // ---------------------------------------------------------
@@ -399,7 +399,7 @@ class AggregationHashTableIterator {
    */
   const byte *GetCurrentAggregateRow() const {
     auto *ht_entry = iter_.GetCurrentEntry();
-    return ht_entry->payload;
+    return ht_entry->payload_;
   }
 
  private:
@@ -438,7 +438,7 @@ class AggregationOverflowPartitionIterator {
   void Next() {
     // Try to move along current partition
     if (curr_ != nullptr) {
-      curr_ = curr_->next;
+      curr_ = curr_->next_;
       if (curr_ != nullptr) {
         return;
       }
@@ -455,14 +455,14 @@ class AggregationOverflowPartitionIterator {
    * to. It is assumed the caller has checked there is data in the iterator.
    * @return The hash value of the current overflow entry.
    */
-  const hash_t GetHash() const { return curr_->hash; }
+  hash_t GetHash() const { return curr_->hash_; }
 
   /**
    * Get the payload of the overflow entry the iterator is currently pointing
    * to. It is assumed the caller has checked there is data in the iterator.
    * @return The opaque payload associated with the current overflow entry.
    */
-  const byte *GetPayload() const { return curr_->payload; }
+  const byte *GetPayload() const { return curr_->payload_; }
 
   /**
    * Get the payload of the overflow entry the iterator is currently pointing

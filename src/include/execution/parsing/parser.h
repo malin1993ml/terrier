@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <unordered_set>
 
@@ -7,7 +8,6 @@
 #include "execution/ast/ast_node_factory.h"
 #include "execution/ast/context.h"
 #include "execution/ast/identifier.h"
-#include "execution/parsing/rewriter.h"
 #include "execution/parsing/scanner.h"
 #include "execution/sema/error_reporter.h"
 
@@ -22,9 +22,8 @@ class Parser {
    * Build a parser instance using the given scanner and AST context
    * @param scanner The scanner used to read input tokens
    * @param context The context
-   * @param rewriter The expression rewriter
    */
-  Parser(Scanner *scanner, ast::Context *context, Rewriter *rewriter = nullptr);
+  Parser(Scanner *scanner, ast::Context *context);
 
   /**
    * This class cannot be copied or moved
@@ -38,21 +37,21 @@ class Parser {
   ast::AstNode *Parse();
 
  private:
-  util::Region *region() { return context_->region(); }
+  util::Region *Region() { return context_->Region(); }
 
   // Move to the next token in the stream
   Token::Type Next() { return scanner_->Next(); }
 
   // Peek at the next token in the stream
-  Token::Type peek() const { return scanner_->peek(); }
+  Token::Type Peek() const { return scanner_->Peek(); }
 
   // Consume one token. In debug mode, throw an error if the next token isn't
   // what was expected. In release mode, just consume the token without checking
-  void Consume(UNUSED Token::Type expected) {
-    UNUSED Token::Type next = Next();
+  void Consume(UNUSED_ATTRIBUTE Token::Type expected) {
+    UNUSED_ATTRIBUTE Token::Type next = Next();
 #ifndef NDEBUG
     if (next != expected) {
-      error_reporter_->Report(scanner_->current_position(), sema::ErrorMessages::kUnexpectedToken, next, expected);
+      error_reporter_->Report(scanner_->CurrentPosition(), sema::ErrorMessages::kUnexpectedToken, next, expected);
     }
 #endif
   }
@@ -61,14 +60,14 @@ class Parser {
   void Expect(Token::Type expected) {
     Token::Type next = Next();
     if (next != expected) {
-      error_reporter_->Report(scanner_->current_position(), sema::ErrorMessages::kUnexpectedToken, next, expected);
+      error_reporter_->Report(scanner_->CurrentPosition(), sema::ErrorMessages::kUnexpectedToken, next, expected);
     }
   }
 
   // If the next token matches the given expected token, consume it and return
   // true; otherwise, return false
   bool Matches(Token::Type expected) {
-    if (peek() != expected) {
+    if (Peek() != expected) {
       return false;
     }
 
@@ -78,7 +77,7 @@ class Parser {
 
   // Get the current symbol as an AST string
   ast::Identifier GetSymbol() {
-    const std::string &literal = scanner_->current_literal();
+    const std::string &literal = scanner_->CurrentLiteral();
     return context_->GetIdentifier(literal);
   }
 
@@ -118,7 +117,7 @@ class Parser {
 
   ast::Expr *ParseExpr();
 
-  ast::Expr *ParseBinaryOpExpr(u32 min_prec);
+  ast::Expr *ParseBinaryOpExpr(uint32_t min_prec);
 
   ast::Expr *ParseUnaryOpExpr();
 
@@ -152,9 +151,6 @@ class Parser {
 
   // The error reporter
   sema::ErrorReporter *error_reporter_;
-
-  // The rewriter
-  Rewriter *rewriter_;
 };
 
 }  // namespace terrier::execution::parsing

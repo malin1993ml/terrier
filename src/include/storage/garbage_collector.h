@@ -23,16 +23,31 @@ class GarbageCollector {
   /**
    * Constructor for the Garbage Collector that requires a pointer to the TransactionManager. This is necessary for the
    * GC to invoke the TM's function for handing off the completed transactions queue.
+   * @param timestamp_manager source of timestamps in the system
+   * @param deferred_action_manager pointer to deferred action manager of the system
    * @param txn_manager pointer to the TransactionManager
    * @param observer the access observer attached to this GC. The GC reports every record gc-ed to the observer if
    *                 it is not null. The observer can then gain insight invoke other components to perform actions.
    *                 The observer's function implementation needs to be lightweight because it is called on the GC
    *                 thread.
    */
-  explicit GarbageCollector(transaction::TransactionManager *txn_manager, AccessObserver *observer)
-      : txn_manager_(txn_manager), observer_(observer), last_unlinked_{0} {
+  // TODO(Tianyu): Eventually the GC will be re-written to be purely on the deferred action manager. which will
+  //  eliminate this perceived redundancy of taking in a transaction manager.
+  GarbageCollector(transaction::TimestampManager *timestamp_manager,
+                   transaction::DeferredActionManager *deferred_action_manager,
+                   transaction::TransactionManager *txn_manager, AccessObserver *observer)
+      : timestamp_manager_(timestamp_manager),
+        deferred_action_manager_(deferred_action_manager),
+        txn_manager_(txn_manager),
+        observer_(observer),
+        last_unlinked_{0} {
     TERRIER_ASSERT(txn_manager_->GCEnabled(),
                    "The TransactionManager needs to be instantiated with gc_enabled true for GC to work!");
+  }
+
+  ~GarbageCollector() {
+    TERRIER_ASSERT(txns_to_deallocate_.empty(), "Not all txns have been deallocated");
+    TERRIER_ASSERT(txns_to_unlink_.empty(), "Not all txns have been unlinked");
   }
 
   /**
@@ -63,18 +78,18 @@ class GarbageCollector {
    * Process the deallocate queue
    * @return number of txns (not UndoRecords) processed for debugging/testing
    */
-  uint32_t ProcessDeallocateQueue();
+  uint32_t ProcessDeallocateQueue(transaction::timestamp_t oldest_txn);
 
   /**
    * Process the unlink queue
    * @return number of txns (not UndoRecords) processed for debugging/testing
    */
-  uint32_t ProcessUnlinkQueue();
+  uint32_t ProcessUnlinkQueue(transaction::timestamp_t oldest_txn);
 
   /**
    * Process deferred actions
    */
-  void ProcessDeferredActions();
+  void ProcessDeferredActions(transaction::timestamp_t oldest_txn);
 
   void ReclaimSlotIfDeleted(UndoRecord *undo_record) const;
 
@@ -84,6 +99,8 @@ class GarbageCollector {
 
   void ProcessIndexes();
 
+  transaction::TimestampManager *timestamp_manager_;
+  transaction::DeferredActionManager *deferred_action_manager_;
   transaction::TransactionManager *const txn_manager_;
   AccessObserver *observer_;
   // timestamp of the last time GC unlinked anything. We need this to know when unlinked versions are safe to deallocate
@@ -92,8 +109,6 @@ class GarbageCollector {
   transaction::TransactionQueue txns_to_deallocate_;
   // queue of txns that need to be unlinked
   transaction::TransactionQueue txns_to_unlink_;
-  // queue of unexecuted deferred actions
-  std::queue<std::pair<transaction::timestamp_t, transaction::Action>> deferred_actions_;
 
   std::unordered_set<index::Index *> indexes_;
   common::SharedLatch indexes_latch_;

@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "common/strong_typedef.h"
 #include "execution/sql/memory_pool.h"
 
 namespace terrier::execution::sql {
@@ -19,7 +20,7 @@ namespace terrier::execution::sql {
  * constructed lazily upon first access and destroyed on a subsequent call to
  * @em Reset() or when the container itself is destroyed.
  */
-class ThreadStateContainer {
+class EXPORT ThreadStateContainer {
  public:
   /**
    * Function used to initialize a thread's local state upon first use
@@ -121,7 +122,7 @@ class ThreadStateContainer {
     CollectThreadLocalStateElements(&tmp, element_offset);
     container->clear();
     container->resize(tmp.size());
-    for (u32 idx = 0; idx < tmp.size(); idx++) {
+    for (uint32_t idx = 0; idx < tmp.size(); idx++) {
       (*container)[idx] = reinterpret_cast<T *>(tmp[idx]);
     }
   }
@@ -164,7 +165,7 @@ class ThreadStateContainer {
     ~TLSHandle();
 
     // Thread-local state
-    byte *state() { return state_; }
+    byte *State() { return state_; }
 
    private:
     // Handle to container

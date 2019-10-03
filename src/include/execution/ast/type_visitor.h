@@ -18,8 +18,10 @@ class TypeVisitor {
    * @return return value of the visitor (usually void)
    */
   RetType Visit(const Type *type) {
-    switch (type->type_id()) {
-      default: { llvm_unreachable("Impossible node type"); }
+    switch (type->GetTypeId()) {
+      default: {
+        llvm_unreachable("Impossible node type");
+      }
 #define T(TypeClass)            \
   case Type::TypeId::TypeClass: \
     DISPATCH(TypeClass)
@@ -33,7 +35,7 @@ class TypeVisitor {
    * @param type type to visit
    * @return default return type (usually void)
    */
-  RetType VisitType(UNUSED const Type *type) { return RetType(); }
+  RetType VisitType(UNUSED_ATTRIBUTE const Type *type) { return RetType(); }
 
 #define T(Type) \
   RetType Visit##Type(const Type *type) { DISPATCH(Type); }

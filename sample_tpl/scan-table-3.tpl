@@ -1,18 +1,24 @@
+// Perform:
+//
+// SELECT cola, colb, colc FROM test_1 WHERE (colA >= 50 AND colB < 10000000)
+//
+// Should return 9950 (number of output rows)
+
 fun main(execCtx: *ExecutionContext) -> int {
   var ret = 0
   var tvi: TableVectorIterator
-  @tableIterConstructBind(&tvi, "test_1", execCtx, "t1")
-  @tableIterAddColBind(&tvi, "t1", "colA")
-  @tableIterAddColBind(&tvi, "t1", "colB")
-  @tableIterAddColBind(&tvi, "t1", "colC")
-  @tableIterPerformInitBind(&tvi, "t1")
+  var oids: [3]uint32
+  oids[0] = 1 // colA
+  oids[1] = 2 // colB
+  oids[2] = 3 // colC
+  @tableIterInitBind(&tvi, execCtx, "test_1", oids)
   for (@tableIterAdvance(&tvi)) {
     var pci = @tableIterGetPCI(&tvi)
     for (; @pciHasNext(pci); @pciAdvance(pci)) {
-      var cola = @pciGetBind(pci, "t1", "colA")
-      var colb = @pciGetBind(pci, "t1", "colB")
-      var colc = @pciGetBind(pci, "t1", "colC")
-      if ((cola >= 50 and colb < 10000000) or (colc < 500000)) {
+      var cola = @pciGetInt(pci, 0)
+      var colb = @pciGetInt(pci, 1)
+      var colc = @pciGetInt(pci, 2)
+      if (cola >= 50 and colb < 10000000) {
         ret = ret + 1
       }
     }

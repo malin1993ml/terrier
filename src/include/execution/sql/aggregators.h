@@ -3,9 +3,9 @@
 #include <algorithm>
 #include <limits>
 
+#include "common/macros.h"
 #include "execution/sql/value.h"
-#include "execution/util/common.h"
-#include "execution/util/macros.h"
+#include "execution/util/execution_common.h"
 
 namespace terrier::execution::sql {
 
@@ -31,7 +31,7 @@ class CountAggregate {
   /**
    * Advance the count based on the NULL-ness of the input value.
    */
-  void Advance(const Val &val) { count_ += static_cast<u64>(!val.is_null); }
+  void Advance(const Val &val) { count_ += static_cast<uint64_t>(!val.is_null_); }
 
   /**
    * Merge this count with the @em that count.
@@ -49,7 +49,7 @@ class CountAggregate {
   Integer GetCountResult() const { return Integer(count_); }
 
  private:
-  u64 count_{0};
+  uint64_t count_{0};
 };
 
 // ---------------------------------------------------------
@@ -74,7 +74,7 @@ class CountStarAggregate {
   /**
    * Advance the aggregate by one.
    */
-  void Advance(UNUSED const Val &val) { count_++; }
+  void Advance(UNUSED_ATTRIBUTE const Val &val) { count_++; }
 
   /**
    * Merge this count with the @em that count.
@@ -92,7 +92,7 @@ class CountStarAggregate {
   Integer GetCountResult() const { return Integer(count_); }
 
  private:
-  u64 count_{0};
+  uint64_t count_{0};
 };
 
 // ---------------------------------------------------------
@@ -121,11 +121,11 @@ class IntegerSumAggregate {
    * Advance the aggregate by input value @em val.
    */
   void Advance(const Integer &val) {
-    if (val.is_null) {
+    if (val.is_null_) {
       return;
     }
     null_ = false;
-    sum_ += val.val;
+    sum_ += val.val_;
   }
 
   /**
@@ -152,12 +152,12 @@ class IntegerSumAggregate {
    */
   Integer GetResultSum() const {
     Integer sum(sum_);
-    sum.is_null = null_;
+    sum.is_null_ = null_;
     return sum;
   }
 
  private:
-  i64 sum_{0};
+  int64_t sum_{0};
   bool null_{true};
 };
 
@@ -180,11 +180,11 @@ class RealSumAggregate {
    * Advance the aggregate by the input value @em val.
    */
   void Advance(const Real &val) {
-    if (val.is_null) {
+    if (val.is_null_) {
       return;
     }
     null_ = false;
-    sum_ += val.val;
+    sum_ += val.val_;
   }
 
   /**
@@ -211,7 +211,7 @@ class RealSumAggregate {
    */
   Real GetResultSum() const {
     Real sum(sum_);
-    sum.is_null = null_;
+    sum.is_null_ = null_;
     return sum;
   }
 
@@ -243,11 +243,11 @@ class IntegerMaxAggregate {
    * Advance the aggregate by the input value @em val.
    */
   void Advance(const Integer &val) {
-    if (val.is_null) {
+    if (val.is_null_) {
       return;
     }
     null_ = false;
-    max_ = std::max(val.val, max_);
+    max_ = std::max(val.val_, max_);
   }
 
   /**
@@ -266,7 +266,7 @@ class IntegerMaxAggregate {
    */
   void Reset() {
     null_ = true;
-    max_ = std::numeric_limits<i64>::min();
+    max_ = std::numeric_limits<int64_t>::min();
   }
 
   /**
@@ -274,12 +274,12 @@ class IntegerMaxAggregate {
    */
   Integer GetResultMax() const {
     Integer max(max_);
-    max.is_null = null_;
+    max.is_null_ = null_;
     return max;
   }
 
  private:
-  i64 max_{std::numeric_limits<i64>::min()};
+  int64_t max_{std::numeric_limits<int64_t>::min()};
   bool null_{true};
 };
 
@@ -302,11 +302,11 @@ class RealMaxAggregate {
    * Advance the aggregate by the input value @em val.
    */
   void Advance(const Real &val) {
-    if (val.is_null) {
+    if (val.is_null_) {
       return;
     }
     null_ = false;
-    max_ = std::max(val.val, max_);
+    max_ = std::max(val.val_, max_);
   }
 
   /**
@@ -333,7 +333,7 @@ class RealMaxAggregate {
    */
   Real GetResultMax() const {
     Real max(max_);
-    max.is_null = null_;
+    max.is_null_ = null_;
     return max;
   }
 
@@ -365,11 +365,11 @@ class IntegerMinAggregate {
    * Advance the aggregate by the input value @em val.
    */
   void Advance(const Integer &val) {
-    if (val.is_null) {
+    if (val.is_null_) {
       return;
     }
     null_ = false;
-    min_ = std::min(val.val, min_);
+    min_ = std::min(val.val_, min_);
   }
 
   /**
@@ -388,7 +388,7 @@ class IntegerMinAggregate {
    */
   void Reset() {
     null_ = true;
-    min_ = std::numeric_limits<i64>::max();
+    min_ = std::numeric_limits<int64_t>::max();
   }
 
   /**
@@ -396,12 +396,12 @@ class IntegerMinAggregate {
    */
   Integer GetResultMin() const {
     Integer min(min_);
-    min.is_null = null_;
+    min.is_null_ = null_;
     return min;
   }
 
  private:
-  i64 min_{std::numeric_limits<i64>::max()};
+  int64_t min_{std::numeric_limits<int64_t>::max()};
   bool null_{true};
 };
 
@@ -424,11 +424,11 @@ class RealMinAggregate {
    * Advance the aggregate by the input value @em val.
    */
   void Advance(const Real &val) {
-    if (val.is_null) {
+    if (val.is_null_) {
       return;
     }
     null_ = false;
-    min_ = std::min(val.val, min_);
+    min_ = std::min(val.val_, min_);
   }
 
   /**
@@ -455,7 +455,7 @@ class RealMinAggregate {
    */
   Real GetResultMin() const {
     Real min(min_);
-    min.is_null = null_;
+    min.is_null_ = null_;
     return min;
   }
 
@@ -488,10 +488,10 @@ class AvgAggregate {
    */
   template <typename T>
   void Advance(const T &val) {
-    if (val.is_null) {
+    if (val.is_null_) {
       return;
     }
-    sum_ += static_cast<double>(val.val);
+    sum_ += static_cast<double>(val.val_);
     count_++;
   }
 
@@ -523,7 +523,7 @@ class AvgAggregate {
 
  private:
   double sum_{0.0};
-  u64 count_{0};
+  uint64_t count_{0};
 };
 
 }  // namespace terrier::execution::sql

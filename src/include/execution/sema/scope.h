@@ -3,7 +3,7 @@
 #include "llvm/ADT/DenseMap.h"
 
 #include "execution/ast/identifier.h"
-#include "execution/util/common.h"
+#include "execution/util/execution_common.h"
 
 namespace terrier::execution {
 
@@ -22,7 +22,7 @@ class Scope {
   /**
    * The kind of scope
    */
-  enum class Kind : u8 { Block, Function, File, Loop };
+  enum class Kind : uint8_t { Block, Function, File, Loop };
 
   /**
    * Constructor
@@ -70,7 +70,7 @@ class Scope {
   /**
    * @return the parent scope
    */
-  Scope *outer() const { return outer_; }
+  Scope *Outer() const { return outer_; }
 
  private:
   Scope *outer_;

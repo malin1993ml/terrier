@@ -5,9 +5,8 @@
 #include <memory>
 #include <vector>
 
-#include "execution/util/common.h"
-#include "execution/util/macros.h"
-#include "execution/util/spin_latch.h"
+#include "common/macros.h"
+#include "execution/util/execution_common.h"
 
 namespace terrier::execution::sql {
 
@@ -16,7 +15,7 @@ class MemoryTracker;
 /**
  * A memory pool
  */
-class MemoryPool {
+class EXPORT MemoryPool {
  public:
   /**
    * Create a pool that reports to the given memory tracker @em tracker.
@@ -112,7 +111,7 @@ class MemoryPool {
   MemoryTracker *tracker_;
 
   //
-  static std::atomic<u64> kMmapThreshold;
+  static std::atomic<uint64_t> k_mmap_threshold;
 };
 
 /**
@@ -156,14 +155,14 @@ class MemoryPoolAllocator {
    * @param n size of the array
    * @return an array of the given size
    */
-  T *allocate(std::size_t n) { return memory_->AllocateArray<T>(n, false); }
+  T *allocate(std::size_t n) { return memory_->AllocateArray<T>(n, false); }  // NOLINT
 
   /**
    * Deallocates an array
    * @param ptr array to deallocate
    * @param n size of the array
    */
-  void deallocate(T *ptr, std::size_t n) { memory_->Deallocate(ptr, n); }
+  void deallocate(T *ptr, std::size_t n) { memory_->Deallocate(ptr, n); }  // NOLINT
 
   /**
    * Equality comparison for two memory pools

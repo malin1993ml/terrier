@@ -1,3 +1,9 @@
+// Perform
+//
+// SELECT colA, colB FROM test_1 WHERE colA < 2000 ORDER BY colA
+//
+// Should return 2000 (number of output tuples).
+
 struct State {
   sorter: Sorter
 }
@@ -26,17 +32,17 @@ fun tearDownState(state: *State) -> nil {
 fun pipeline_1(execCtx: *ExecutionContext, state: *State) -> nil {
   var sorter = &state.sorter
   var tvi: TableVectorIterator
-  @tableIterConstructBind(&tvi, "test_1", execCtx, "t1")
-  @tableIterAddColBind(&tvi, "t1", "colA")
-  @tableIterAddColBind(&tvi, "t1", "colB")
-  @tableIterPerformInitBind(&tvi, "t1")
+  var oids: [2]uint32
+  oids[0] = 1 // colA
+  oids[1] = 2 // colB
+  @tableIterInitBind(&tvi, execCtx, "test_1", oids)
   for (@tableIterAdvance(&tvi)) {
     var pci = @tableIterGetPCI(&tvi)
-    @filterLtBind(pci, "t1", "colA", 2000)
+    @filterLt(pci, 0, 4, 2000)
     for (; @pciHasNextFiltered(pci); @pciAdvanceFiltered(pci)) {
       var row = @ptrCast(*Row, @sorterInsert(sorter))
-      row.a = @pciGetBind(pci, "t1", "colA")
-      row.b = @pciGetBind(pci, "t1", "colB")
+      row.a = @pciGetInt(pci, 0)
+      row.b = @pciGetInt(pci, 1)
     }
     @pciResetFiltered(pci)
   }

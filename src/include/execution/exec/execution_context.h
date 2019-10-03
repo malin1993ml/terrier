@@ -10,12 +10,11 @@
 #include "transaction/transaction_manager.h"
 
 namespace terrier::execution::exec {
-using transaction::TransactionContext;
-
 /**
  * Execution Context: Stores information handed in by upper layers.
+ * TODO(Amadou): This class will change once we know exactly what we get from upper layers.
  */
-class ExecutionContext {
+class EXPORT ExecutionContext {
  public:
   /**
    * An allocator for short-ish strings. Needed because the requirements of
@@ -29,7 +28,7 @@ class ExecutionContext {
     /**
      * Create a new allocator
      */
-    StringAllocator();
+    StringAllocator() : region_("") {}
 
     /**
      * This class cannot be copied or moved.
@@ -39,7 +38,7 @@ class ExecutionContext {
     /**
      * Destroy allocator
      */
-    ~StringAllocator();
+    ~StringAllocator() = default;
 
     /**
      * Allocate a string of the given size..
@@ -49,10 +48,9 @@ class ExecutionContext {
     char *Allocate(std::size_t size);
 
     /**
-     * Deallocate a string allocated from this allocator.
-     * @param str The string to deallocate.
+     * No-op. Bulk de-allocated upon destruction.
      */
-    void Deallocate(char *str);
+    void Deallocate(char *str) {}
 
    private:
     util::Region region_;
@@ -66,19 +64,20 @@ class ExecutionContext {
    * @param schema the schema of the output
    * @param accessor the catalog accessor of this query
    */
-  ExecutionContext(catalog::db_oid_t db_oid, TransactionContext *txn, const OutputCallback &callback,
+  ExecutionContext(catalog::db_oid_t db_oid, transaction::TransactionContext *txn, const OutputCallback &callback,
                    const planner::OutputSchema *schema, std::unique_ptr<catalog::CatalogAccessor> &&accessor)
       : db_oid_(db_oid),
         txn_(txn),
-        buffer_(schema == nullptr
-                    ? nullptr
-                    : std::make_unique<OutputBuffer>(schema->GetColumns().size(), ComputeTupleSize(schema), callback)),
+        mem_pool_(std::make_unique<sql::MemoryPool>(nullptr)),
+        buffer_(schema == nullptr ? nullptr
+                                  : std::make_unique<OutputBuffer>(mem_pool_.get(), schema->GetColumns().size(),
+                                                                   ComputeTupleSize(schema), callback)),
         accessor_(std::move(accessor)) {}
 
   /**
    * @return the transaction used by this query
    */
-  TransactionContext *GetTxn() { return txn_; }
+  transaction::TransactionContext *GetTxn() { return txn_; }
 
   /**
    * @return the output buffer used by this query
@@ -89,12 +88,6 @@ class ExecutionContext {
    * @return the memory pool
    */
   sql::MemoryPool *GetMemoryPool() { return mem_pool_.get(); }
-
-  /**
-   * Set the memory pool
-   * @param mem_pool new memory pool
-   */
-  void SetMemoryPool(std::unique_ptr<sql::MemoryPool> &&mem_pool) { mem_pool_ = std::move(mem_pool); }
 
   /**
    * @return the string allocator
@@ -119,9 +112,9 @@ class ExecutionContext {
 
  private:
   catalog::db_oid_t db_oid_;
-  TransactionContext *txn_;
+  transaction::TransactionContext *txn_;
+  std::unique_ptr<sql::MemoryPool> mem_pool_;
   std::unique_ptr<OutputBuffer> buffer_;
-  std::unique_ptr<sql::MemoryPool> mem_pool_{nullptr};
   StringAllocator string_allocator_;
   std::unique_ptr<catalog::CatalogAccessor> accessor_;
 };

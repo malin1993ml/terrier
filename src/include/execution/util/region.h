@@ -5,9 +5,9 @@
 #include <string>
 #include <type_traits>
 
-#include "execution/util/common.h"
-#include "execution/util/macros.h"
-#include "execution/util/math_util.h"
+#include "common/macros.h"
+#include "common/math_util.h"
+#include "execution/util/execution_common.h"
 
 namespace terrier::execution::util {
 
@@ -43,7 +43,7 @@ class Region {
    * @param alignment The desired alignment
    * @return A pointer to the start of the allocated space
    */
-  void *Allocate(std::size_t size, std::size_t alignment = kDefaultByteAlignment);
+  void *Allocate(std::size_t size, std::size_t alignment = K_DEFAULT_BYTE_ALIGNMENT);
 
   /**
    * Allocate a (contiguous) array of elements of the given type
@@ -79,22 +79,22 @@ class Region {
   /**
    * @return The name of the region
    */
-  const std::string &name() const { return name_; }
+  const std::string &Name() const { return name_; }
 
   /**
    * @return The number of bytes this region has given out
    */
-  u64 allocated() const { return allocated_; }
+  uint64_t Allocated() const { return allocated_; }
 
   /**
    * @return The number of bytes wasted due to alignment requirements
    */
-  u64 alignment_waste() const { return alignment_waste_; }
+  uint64_t AlignmentWaste() const { return alignment_waste_; }
 
   /**
    * @return The total number of bytes acquired from the OS
    */
-  u64 total_memory() const { return chunk_bytes_allocated_; }
+  uint64_t TotalMemory() const { return chunk_bytes_allocated_; }
 
  private:
   // Expand the region
@@ -105,28 +105,28 @@ class Region {
   // smallest unit of allocation a region acquires from the operating system.
   // Each individual region allocation is sourced from a chunk.
   struct Chunk {
-    Chunk *next;
-    u64 size;
+    Chunk *next_;
+    uint64_t size_;
 
-    void Init(Chunk *next, u64 size) {
-      this->next = next;
-      this->size = size;
+    void Init(Chunk *next, uint64_t size) {
+      this->next_ = next;
+      this->size_ = size;
     }
 
     uintptr_t Start() const { return reinterpret_cast<uintptr_t>(this) + sizeof(Chunk); }
 
-    uintptr_t End() const { return reinterpret_cast<uintptr_t>(this) + size; }
+    uintptr_t End() const { return reinterpret_cast<uintptr_t>(this) + size_; }
   };
 
  private:
   // The alignment of all pointers
-  static const u32 kDefaultByteAlignment = 8;
+  static const uint32_t K_DEFAULT_BYTE_ALIGNMENT = 8;
 
-  // Min chunk allocation is 8KB
-  static const std::size_t kMinChunkAllocation = 8 * 1024;
+  // Min chunk allocation is 8common::Constants::KB
+  static const std::size_t K_MIN_CHUNK_ALLOCATION = 8 * 1024;
 
-  // Max chunk allocation is 1MB
-  static const std::size_t kMaxChunkAllocation = 1 * 1024 * 1024;
+  // Max chunk allocation is 1common::Constants::MB
+  static const std::size_t K_MAX_CHUNK_ALLOCATION = 1 * 1024 * 1024;
 
   // The name of the region
   const std::string name_;
@@ -180,7 +180,7 @@ class RegionObject {
   /**
    * Should not be called.
    */
-  void operator delete(UNUSED void *ptr, UNUSED Region *region) {
+  void operator delete(UNUSED_ATTRIBUTE void *ptr, UNUSED_ATTRIBUTE Region *region) {
     UNREACHABLE("Calling \"delete\" on region object is forbidden!");
   }
 };

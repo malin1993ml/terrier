@@ -1,3 +1,10 @@
+// Perform in vectorized fashion:
+//
+// SELECT col_b, count(col_a) FROM test_1 GROUP BY col_b
+//
+//
+// Should output 10 (number of distinct col_b)
+
 struct State {
   table: AggregationHashTable
   count: int32
@@ -45,8 +52,10 @@ fun pipeline_1(execCtx: *ExecutionContext, state: *State) -> nil {
 
   // Setup the iterator and iterate
   var tvi: TableVectorIterator
-  @tableIterConstructBind(&tvi, "test_ns", "test_1", execCtx)
-  @tableIterPerformInit(&tvi)
+  var col_oids : [2]uint32
+  col_oids[0] = 1
+  col_oids[1] = 2
+  @tableIterInitBind(&tvi, execCtx, "test_1", col_oids)
   for (; @tableIterAdvance(&tvi); ) {
     var vec = @tableIterGetPCI(&tvi)
     iters[0] = vec

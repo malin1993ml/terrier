@@ -5,6 +5,7 @@
 
 #include "llvm/Support/Casting.h"
 
+#include "common/strong_typedef.h"
 #include "execution/ast/identifier.h"
 #include "execution/util/region.h"
 #include "execution/util/region_containers.h"
@@ -37,20 +38,20 @@ class Context;
 //           type information to these builtins.
 #define BUILTIN_TYPE_LIST(PRIM, NON_PRIM, SQL)                                                  \
   /* Primitive types */                                                                         \
-  PRIM(Nil, u8, "nil")                                                                          \
+  PRIM(Nil, uint8_t, "nil")                                                                     \
   PRIM(Bool, bool, "bool")                                                                      \
-  PRIM(Int8, i8, "int8")                                                                        \
-  PRIM(Int16, i16, "int16")                                                                     \
-  PRIM(Int32, i32, "int32")                                                                     \
-  PRIM(Int64, i64, "int64")                                                                     \
-  PRIM(Uint8, u8, "uint8")                                                                      \
-  PRIM(Uint16, u16, "uint16")                                                                   \
-  PRIM(Uint32, u32, "uint32")                                                                   \
-  PRIM(Uint64, u64, "uint64")                                                                   \
-  PRIM(Int128, i128, "int128")                                                                  \
-  PRIM(Uint128, u128, "uint128")                                                                \
-  PRIM(Float32, f32, "float32")                                                                 \
-  PRIM(Float64, f64, "float64")                                                                 \
+  PRIM(Int8, int8_t, "int8")                                                                    \
+  PRIM(Int16, int16_t, "int16")                                                                 \
+  PRIM(Int32, int32_t, "int32")                                                                 \
+  PRIM(Int64, int64_t, "int64")                                                                 \
+  PRIM(Uint8, uint8_t, "uint8")                                                                 \
+  PRIM(Uint16, uint16_t, "uint16")                                                              \
+  PRIM(Uint32, uint32_t, "uint32")                                                              \
+  PRIM(Uint64, uint64_t, "uint64")                                                              \
+  PRIM(Int128, int128_t, "int128")                                                              \
+  PRIM(Uint128, uint128_t, "uint128")                                                           \
+  PRIM(Float32, float, "float32")                                                               \
+  PRIM(Float64, double, "float64")                                                              \
                                                                                                 \
   /* Non-primitive builtins */                                                                  \
   NON_PRIM(AggregationHashTable, terrier::execution::sql::AggregationHashTable)                 \
@@ -121,7 +122,7 @@ class Type : public util::RegionObject {
   /**
    * The enumeration of all concrete types
    */
-  enum class TypeId : u8 {
+  enum class TypeId : uint8_t {
 #define F(TypeId) TypeId,
     TYPE_LIST(F)
 #undef F
@@ -130,22 +131,22 @@ class Type : public util::RegionObject {
   /**
    * @return the context this type was allocated in
    */
-  Context *context() const { return ctx_; }
+  Context *GetContext() const { return ctx_; }
 
   /**
    * @return the size of this type in bytes
    */
-  u32 size() const { return size_; }
+  uint32_t Size() const { return size_; }
 
   /**
    * @return the alignment of this type in bytes
    */
-  u32 alignment() const { return align_; }
+  uint32_t Alignment() const { return align_; }
 
   /**
    * @return the unique type ID of this type (e.g., int16, Array, Struct etc.)
    */
-  TypeId type_id() const { return type_id_; }
+  TypeId GetTypeId() const { return type_id_; }
 
   /**
    * Perform an "checked cast" to convert an instance of this base Type class
@@ -238,7 +239,7 @@ class Type : public util::RegionObject {
    * @param kind The kind to check
    * @return true iff this is of the given kind.
    */
-  bool IsSpecificBuiltin(u16 kind) const;
+  bool IsSpecificBuiltin(uint16_t kind) const;
 
   /**
    * Checks whether this is a nil type
@@ -306,16 +307,16 @@ class Type : public util::RegionObject {
    * @param alignment alignment of the type
    * @param type_id id of the type
    */
-  Type(Context *ctx, u32 size, u32 alignment, TypeId type_id)
+  Type(Context *ctx, uint32_t size, uint32_t alignment, TypeId type_id)
       : ctx_(ctx), size_(size), align_(alignment), type_id_(type_id) {}
 
  private:
   // The context this type was created/unique'd in
   Context *ctx_;
   // The size of this type in bytes
-  u32 size_;
+  uint32_t size_;
   // The alignment of this type in bytes
-  u32 align_;
+  uint32_t align_;
   // The unique ID of this type
   TypeId type_id_;
 };
@@ -329,14 +330,14 @@ class BuiltinType : public Type {
   /**
    * Enum of builtin types
    */
-  enum Kind : u16 { BUILTIN_TYPE_LIST(F, F, F) };
+  enum Kind : uint16_t { BUILTIN_TYPE_LIST(F, F, F) };
 #undef F
 
   /**
    * Get the name of the builtin as it appears in TPL code
    * @return name of the builtin
    */
-  const char *tpl_name() const { return kTplNames[static_cast<u16>(kind_)]; }
+  const char *TplName() const { return tpl_names[static_cast<uint16_t>(kind_)]; }
 
   /**
    * Get the name of the C++ type that backs this builtin. For primitive
@@ -345,49 +346,49 @@ class BuiltinType : public Type {
    * along with the namespace).
    * @return the C++ type name
    */
-  const char *cpp_name() const { return kCppNames[static_cast<u16>(kind_)]; }
+  const char *CppName() const { return cpp_names[static_cast<uint16_t>(kind_)]; }
 
   /**
    * Get the size of this builtin in bytes
    * @return size of the builtin type
    */
-  u64 size() const { return kSizes[static_cast<u16>(kind_)]; }
+  uint64_t Size() const { return SIZES[static_cast<uint16_t>(kind_)]; }
 
   /**
    * Get the required alignment of this builtin in bytes
    * @return alignment of this builtin type
    */
-  u64 alignment() const { return kAlignments[static_cast<u16>(kind_)]; }
+  uint64_t Alignment() const { return ALIGNMENTS[static_cast<uint16_t>(kind_)]; }
 
   /**
    * @return Is this builtin a primitive?
    */
-  bool is_primitive() const { return kPrimitiveFlags[static_cast<u16>(kind_)]; }
+  bool IsPrimitive() const { return PRIMITIVE_FLAGS[static_cast<uint16_t>(kind_)]; }
 
   /**
    * @return Is this builtin a primitive integer?
    */
-  bool is_integer() const { return Kind::Int8 <= kind() && kind() <= Kind::Uint128; }
+  bool IsInteger() const { return Kind::Int8 <= GetKind() && GetKind() <= Kind::Uint128; }
 
   /**
    * @return Is this builtin a primitive floating point number?
    */
-  bool is_floating_point() const { return kFloatingPointFlags[static_cast<u16>(kind_)]; }
+  bool IsFloatingPoint() const { return FLOATING_POINT_FLAGS[static_cast<uint16_t>(kind_)]; }
 
   /**
    * Is this type a SQL value type?
    */
-  bool is_sql_value() const { return Kind::Boolean <= kind() && kind() <= Kind::Timestamp; }
+  bool IsSqlValue() const { return Kind::Boolean <= GetKind() && GetKind() <= Kind::Timestamp; }
 
   /**
    * Is this type a SQL aggregator type? IntegerSumAggregate, CountAggregate ...
    */
-  bool is_sql_aggregator_type() const { return Kind::CountAggregate <= kind() && kind() <= Kind::RealSumAggregate; }
+  bool IsSqlAggregatorType() const { return Kind::CountAggregate <= GetKind() && GetKind() <= Kind::RealSumAggregate; }
 
   /**
    * @return the kind of this builtin
    */
-  Kind kind() const { return kind_; }
+  Kind GetKind() const { return kind_; }
 
   /**
    * Return a builtin of the given kind.
@@ -402,25 +403,25 @@ class BuiltinType : public Type {
    * @param type type to check
    * @return true iff this is the same as the given type
    */
-  static bool classof(const Type *type) { return type->type_id() == TypeId::BuiltinType; }
+  static bool classof(const Type *type) { return type->GetTypeId() == TypeId::BuiltinType; }  // NOLINT
 
  private:
   friend class Context;
   // Private constructor
-  BuiltinType(Context *ctx, u32 size, u32 alignment, Kind kind)
+  BuiltinType(Context *ctx, uint32_t size, uint32_t alignment, Kind kind)
       : Type(ctx, size, alignment, TypeId::BuiltinType), kind_(kind) {}
 
  private:
   Kind kind_;
 
  private:
-  static const char *kCppNames[];
-  static const char *kTplNames[];
-  static const u64 kSizes[];
-  static const u64 kAlignments[];
-  static const bool kPrimitiveFlags[];
-  static const bool kFloatingPointFlags[];
-  static const bool kSignedFlags[];
+  static const char *cpp_names[];
+  static const char *tpl_names[];
+  static const uint64_t SIZES[];
+  static const uint64_t ALIGNMENTS[];
+  static const bool PRIMITIVE_FLAGS[];
+  static const bool FLOATING_POINT_FLAGS[];
+  static const bool SIGNED_FLAGS[];
 };
 
 /**
@@ -439,12 +440,12 @@ class StringType : public Type {
    * @param type checked type
    * @return whether type is a string type.
    */
-  static bool classof(const Type *type) { return type->type_id() == TypeId::StringType; }
+  static bool classof(const Type *type) { return type->GetTypeId() == TypeId::StringType; }  // NOLINT
 
  private:
   friend class Context;
   // Private constructor
-  explicit StringType(Context *ctx) : Type(ctx, sizeof(i8 *), alignof(i8 *), TypeId::StringType) {}
+  explicit StringType(Context *ctx) : Type(ctx, sizeof(int8_t *), alignof(int8_t *), TypeId::StringType) {}
 };
 
 /**
@@ -455,7 +456,7 @@ class PointerType : public Type {
   /**
    * @return base type
    */
-  Type *base() const { return base_; }
+  Type *Base() const { return base_; }
 
   /**
    * Static Constructor
@@ -468,12 +469,12 @@ class PointerType : public Type {
    * @param type checked type
    * @return whether type is a pointer type.
    */
-  static bool classof(const Type *type) { return type->type_id() == TypeId::PointerType; }
+  static bool classof(const Type *type) { return type->GetTypeId() == TypeId::PointerType; }  // NOLINT
 
  private:
   // Private constructor
   explicit PointerType(Type *base)
-      : Type(base->context(), sizeof(i8 *), alignof(i8 *), TypeId::PointerType), base_(base) {}
+      : Type(base->GetContext(), sizeof(int8_t *), alignof(int8_t *), TypeId::PointerType), base_(base) {}
 
  private:
   Type *base_;
@@ -487,12 +488,12 @@ class ArrayType : public Type {
   /**
    * @return length of the array
    */
-  u64 length() const { return length_; }
+  uint64_t Length() const { return length_; }
 
   /**
    * @return element type
    */
-  Type *element_type() const { return elem_type_; }
+  Type *ElementType() const { return elem_type_; }
 
   /**
    * @return whether the length is known
@@ -510,23 +511,24 @@ class ArrayType : public Type {
    * @param elem_type element type
    * @return the array type
    */
-  static ArrayType *Get(u64 length, Type *elem_type);
+  static ArrayType *Get(uint64_t length, Type *elem_type);
 
   /**
    * @return whether type is an array type.
    */
-  static bool classof(const Type *type) { return type->type_id() == TypeId::ArrayType; }
+  static bool classof(const Type *type) { return type->GetTypeId() == TypeId::ArrayType; }  // NOLINT
 
  private:
   // Private constructor
-  explicit ArrayType(u64 length, Type *elem_type)
-      : Type(elem_type->context(), (length == 0 ? sizeof(u8 *) : elem_type->size() * static_cast<u32>(length)),
-             (length == 0 ? alignof(u8 *) : elem_type->alignment()), TypeId::ArrayType),
+  explicit ArrayType(uint64_t length, Type *elem_type)
+      : Type(elem_type->GetContext(),
+             (length == 0 ? sizeof(uint8_t *) : elem_type->Size() * static_cast<uint32_t>(length)),
+             (length == 0 ? alignof(uint8_t *) : elem_type->Alignment()), TypeId::ArrayType),
         length_(length),
         elem_type_(elem_type) {}
 
  private:
-  u64 length_;
+  uint64_t length_;
   Type *elem_type_;
 };
 
@@ -538,25 +540,25 @@ struct Field {
   /**
    * Name of the field
    */
-  Identifier name;
+  Identifier name_;
 
   /**
    * Type of the field
    */
-  Type *type;
+  Type *type_;
 
   /**
    * Constructor
    * @param name of the field
    * @param type of the field
    */
-  Field(const Identifier &name, Type *type) : name(name), type(type) {}
+  Field(const Identifier &name, Type *type) : name_(name), type_(type) {}
 
   /**
    * @param other rhs of the comparison
    * @return whether this == other
    */
-  bool operator==(const Field &other) const noexcept { return name == other.name && type == other.type; }
+  bool operator==(const Field &other) const noexcept { return name_ == other.name_ && type_ == other.type_; }
 };
 
 /**
@@ -567,17 +569,17 @@ class FunctionType : public Type {
   /**
    * @return list of parameters
    */
-  const util::RegionVector<Field> &params() const { return params_; }
+  const util::RegionVector<Field> &Params() const { return params_; }
 
   /**
    * @return numner of parameters
    */
-  u32 num_params() const { return static_cast<u32>(params().size()); }
+  uint32_t NumParams() const { return static_cast<uint32_t>(Params().size()); }
 
   /**
    * @return return type of the function
    */
-  Type *return_type() const { return ret_; }
+  Type *ReturnType() const { return ret_; }
 
   /**
    * Static Constructor
@@ -591,7 +593,7 @@ class FunctionType : public Type {
    * @param type type to compare with
    * @return whether type is of function type
    */
-  static bool classof(const Type *type) { return type->type_id() == TypeId::FunctionType; }
+  static bool classof(const Type *type) { return type->GetTypeId() == TypeId::FunctionType; }  // NOLINT
 
  private:
   // Private constructor
@@ -610,12 +612,12 @@ class MapType : public Type {
   /**
    * @return type of the keys
    */
-  Type *key_type() const { return key_type_; }
+  Type *KeyType() const { return key_type_; }
 
   /**
    * @return type of values
    */
-  Type *value_type() const { return val_type_; }
+  Type *ValueType() const { return val_type_; }
 
   /**
    * Static Constructor
@@ -629,7 +631,7 @@ class MapType : public Type {
    * @param type to compare with
    * @return whether type is of map type.
    */
-  static bool classof(const Type *type) { return type->type_id() == TypeId::MapType; }
+  static bool classof(const Type *type) { return type->GetTypeId() == TypeId::MapType; }  // NOLINT
 
  private:
   // Private Constructor
@@ -648,16 +650,16 @@ class StructType : public Type {
   /**
    * @return list of fields
    */
-  const util::RegionVector<Field> &fields() const { return fields_; }
+  const util::RegionVector<Field> &Fields() const { return fields_; }
 
   /**
    * @param name field to lookup
    * @return type of the field
    */
   Type *LookupFieldByName(Identifier name) const {
-    for (const auto &field : fields()) {
-      if (field.name == name) {
-        return field.type;
+    for (const auto &field : Fields()) {
+      if (field.name_ == name) {
+        return field.type_;
       }
     }
     return nullptr;
@@ -667,9 +669,9 @@ class StructType : public Type {
    * @param name field of to lookup
    * @return offset of the field
    */
-  u32 GetOffsetOfFieldByName(Identifier name) const {
-    for (u32 i = 0; i < fields_.size(); i++) {
-      if (fields_[i].name == name) {
+  uint32_t GetOffsetOfFieldByName(Identifier name) const {
+    for (uint32_t i = 0; i < fields_.size(); i++) {
+      if (fields_[i].name_ == name) {
         return field_offsets_[i];
       }
     }
@@ -680,7 +682,7 @@ class StructType : public Type {
    * @param other struct to compare to
    * @return whether this and other are identical
    */
-  bool IsLayoutIdentical(const StructType &other) const { return (this == &other || fields() == other.fields()); }
+  bool IsLayoutIdentical(const StructType &other) const { return (this == &other || Fields() == other.Fields()); }
 
   /**
    * Note: fields cannot be empty!
@@ -702,16 +704,16 @@ class StructType : public Type {
    * @param type checked type
    * @return whether type is a struct type.
    */
-  static bool classof(const Type *type) { return type->type_id() == TypeId::StructType; }
+  static bool classof(const Type *type) { return type->GetTypeId() == TypeId::StructType; }  // NOLINT
 
  private:
   // Private constructor
-  explicit StructType(Context *ctx, u32 size, u32 alignment, util::RegionVector<Field> &&fields,
-                      util::RegionVector<u32> &&field_offsets);
+  explicit StructType(Context *ctx, uint32_t size, uint32_t alignment, util::RegionVector<Field> &&fields,
+                      util::RegionVector<uint32_t> &&field_offsets);
 
  private:
   util::RegionVector<Field> fields_;
-  util::RegionVector<u32> field_offsets_;
+  util::RegionVector<uint32_t> field_offsets_;
 };
 
 // ---------------------------------------------------------
@@ -720,14 +722,14 @@ class StructType : public Type {
 
 inline Type *Type::GetPointeeType() const {
   if (auto *ptr_type = SafeAs<PointerType>()) {
-    return ptr_type->base();
+    return ptr_type->Base();
   }
   return nullptr;
 }
 
-inline bool Type::IsSpecificBuiltin(u16 kind) const {
+inline bool Type::IsSpecificBuiltin(uint16_t kind) const {
   if (auto *builtin_type = SafeAs<BuiltinType>()) {
-    return builtin_type->kind() == static_cast<BuiltinType::Kind>(kind);
+    return builtin_type->GetKind() == static_cast<BuiltinType::Kind>(kind);
   }
   return false;
 }
@@ -738,28 +740,28 @@ inline bool Type::IsBoolType() const { return IsSpecificBuiltin(BuiltinType::Boo
 
 inline bool Type::IsIntegerType() const {
   if (auto *builtin_type = SafeAs<BuiltinType>()) {
-    return builtin_type->is_integer();
+    return builtin_type->IsInteger();
   }
   return false;
 }
 
 inline bool Type::IsFloatType() const {
   if (auto *builtin_type = SafeAs<BuiltinType>()) {
-    return builtin_type->is_floating_point();
+    return builtin_type->IsFloatingPoint();
   }
   return false;
 }
 
 inline bool Type::IsSqlValueType() const {
   if (auto *builtin_type = SafeAs<BuiltinType>()) {
-    return builtin_type->is_sql_value();
+    return builtin_type->IsSqlValue();
   }
   return false;
 }
 
 inline bool Type::IsSqlAggregatorType() const {
   if (auto *builtin_type = SafeAs<BuiltinType>()) {
-    return builtin_type->is_sql_aggregator_type();
+    return builtin_type->IsSqlAggregatorType();
   }
   return false;
 }

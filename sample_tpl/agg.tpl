@@ -2,6 +2,7 @@
 //
 // SELECT col_b, count(col_a) FROM test_1 GROUP BY col_b
 //
+// Should output 10 (number of distinct col_b)
 
 struct State {
   table: AggregationHashTable
@@ -40,8 +41,10 @@ fun updateAgg(agg: *Agg, pci: *ProjectedColumnsIterator) -> nil {
 fun pipeline_1(execCtx: *ExecutionContext, state: *State) -> nil {
   var ht = &state.table
   var tvi: TableVectorIterator
-  @tableIterConstructBind(&tvi, "test_ns", "test_1", execCtx)
-  @tableIterPerformInit(&tvi)
+  var col_oids : [2]uint32
+  col_oids[0] = 1
+  col_oids[1] = 2
+  @tableIterInitBind(&tvi, execCtx, "test_1", col_oids)
   for (@tableIterAdvance(&tvi)) {
     var vec = @tableIterGetPCI(&tvi)
     for (; @pciHasNext(vec); @pciAdvance(vec)) {

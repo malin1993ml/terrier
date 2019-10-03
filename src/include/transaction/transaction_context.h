@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include "common/macros.h"
 #include "common/object_pool.h"
 #include "common/strong_typedef.h"
 #include "storage/data_table.h"
@@ -17,6 +18,8 @@ class BlockCompactor;
 class LogSerializerTask;
 class SqlTable;
 class WriteAheadLoggingTests;
+class RecoveryManager;
+class RecoveryTests;
 }  // namespace terrier::storage
 
 namespace terrier::transaction {
@@ -37,16 +40,10 @@ class TransactionContext {
    * MVCC semantics
    * @param buffer_pool the buffer pool to draw this transaction's undo buffer from
    * @param log_manager pointer to log manager in the system, or nullptr, if logging is disabled
-   * @param transaction_manager pointer to transaction manager in the system (used for action framework)
    */
   TransactionContext(const timestamp_t start, const timestamp_t finish,
-                     storage::RecordBufferSegmentPool *const buffer_pool, storage::LogManager *const log_manager,
-                     TransactionManager *transaction_manager)
-      : start_time_(start),
-        finish_time_(finish),
-        undo_buffer_(buffer_pool),
-        redo_buffer_(log_manager, buffer_pool),
-        txn_mgr_(transaction_manager) {}
+                     storage::RecordBufferSegmentPool *const buffer_pool, storage::LogManager *const log_manager)
+      : start_time_(start), finish_time_(finish), undo_buffer_(buffer_pool), redo_buffer_(log_manager, buffer_pool) {}
 
   /**
    * @warning In the src/ folder this should only be called by the Garbage Collector to adhere to MVCC semantics. Tests
@@ -157,25 +154,35 @@ class TransactionContext {
 
   /**
    * Defers an action to be called if and only if the transaction aborts.  Actions executed LIFO.
+   * @param a the action to be executed. A handle to the system's deferred action manager is supplied
+   * to enable further deferral of actions
+   */
+  void RegisterAbortAction(const TransactionEndAction &a) { abort_actions_.push_front(a); }
+
+  /**
+   * Defers an action to be called if and only if the transaction aborts.  Actions executed LIFO.
    * @param a the action to be executed
    */
-  void RegisterAbortAction(const Action &a) { abort_actions_.push_front(a); }
+  void RegisterAbortAction(const std::function<void()> &a) {
+    RegisterAbortAction([=](transaction::DeferredActionManager * /*unused*/) { a(); });
+  }
 
   /**
    * Defers an action to be called if and only if the transaction commits.  Actions executed LIFO.
    * @warning these actions are run after commit and are not atomic with the commit itself
-   * @param a the action to be executed
+   * @param a the action to be executed. A handle to the system's deferred action manager is supplied
+   * to enable further deferral of actions
    */
-  void RegisterCommitAction(const Action &a) { commit_actions_.push_front(a); }
+  void RegisterCommitAction(const TransactionEndAction &a) { commit_actions_.push_front(a); }
 
   /**
-   * Get the transaction manager responsible for this context (should be singleton).
-   * @warning This should only be used to support dynamically generating deferred actions
-   *          at abort or commit.  We need to expose the transaction manager because that
-   *          is where the deferred actions queue exists.
-   * @return the transaction manager
+   * Defers an action to be called if and only if the transaction commits.  Actions executed LIFO.
+   * @warning these actions are run after commit and are not atomic with the commit itself
+   * @param a the action to be executed.
    */
-  TransactionManager *GetTransactionManager() { return txn_mgr_; }
+  void RegisterCommitAction(const std::function<void()> &a) {
+    RegisterCommitAction([=](transaction::DeferredActionManager * /*unused*/) { a(); });
+  }
 
   /**
    * Flips the TransactionContext's internal flag that it cannot commit to true. This is checked by the
@@ -190,6 +197,8 @@ class TransactionContext {
   friend class storage::LogSerializerTask;
   friend class storage::SqlTable;
   friend class storage::WriteAheadLoggingTests;  // Needs access to redo buffer
+  friend class storage::RecoveryManager;         // Needs access to StageRecoveryUpdate
+  friend class storage::RecoveryTests;           // Needs access to redo buffer
   const timestamp_t start_time_;
   std::atomic<timestamp_t> finish_time_;
   storage::UndoBuffer undo_buffer_;
@@ -199,16 +208,9 @@ class TransactionContext {
   std::vector<const byte *> loose_ptrs_;
 
   // These actions will be triggered (not deferred) at abort/commit.
-  std::forward_list<Action> abort_actions_;
-  std::forward_list<Action> commit_actions_;
+  std::forward_list<TransactionEndAction> abort_actions_;
+  std::forward_list<TransactionEndAction> commit_actions_;
 
-  // Need this reference because the transaction manager is center point for
-  // adding epoch trigger deferrals.
-  TransactionManager *txn_mgr_;
-
-  // log manager will set this to be true when log records are processed (not necessarily flushed, but will not be read
-  // again in the future), so it can be garbage-collected safely.
-  bool log_processed_ = false;
   // We need to know if the transaction is aborted. Even aborted transactions need an "abort" timestamp in order to
   // eliminate the a-b-a race described in DataTable::Select.
   bool aborted_ = false;
@@ -217,5 +219,22 @@ class TransactionContext {
   // cannot be allowed to commit. Currently, it is flipped by indexes (on unique-key conflicts) or SqlTable (write-write
   // conflicts) and checked in Commit().
   bool must_abort_ = false;
+
+  /**
+   * @warning This method is ONLY for recovery
+   * Copy the log record into the transaction's redo buffer.
+   * @param record log record to copy
+   * @return pointer to RedoRecord's location in transaction buffer
+   * @warning If you call StageRecoveryWrite, the operation WILL be logged to disk. If you StageRecoveryWrite anything
+   * that you didn't succeed in writing into the table or decide you don't want to use, the transaction MUST abort.
+   */
+  storage::RedoRecord *StageRecoveryWrite(storage::LogRecord *record) {
+    auto record_location = redo_buffer_.NewEntry(record->Size());
+    memcpy(record_location, record, record->Size());
+    // Overwrite the txn_begin timestamp
+    auto *new_record = reinterpret_cast<storage::LogRecord *>(record_location);
+    new_record->txn_begin_ = start_time_;
+    return new_record->GetUnderlyingRecordBodyAs<storage::RedoRecord>();
+  }
 };
 }  // namespace terrier::transaction

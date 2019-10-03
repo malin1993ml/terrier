@@ -80,6 +80,15 @@ class InsertPlanNode : public AbstractPlanNode {
     }
 
     /**
+     * @param index_oids vector of index oids to insert into
+     * @return builder object
+     */
+    Builder &SetIndexOids(std::vector<catalog::index_oid_t> &&index_oids) {
+      index_oids_ = index_oids;
+      return *this;
+    }
+
+    /**
      * Build the delete plan node
      * @return plan node
      */
@@ -119,6 +128,11 @@ class InsertPlanNode : public AbstractPlanNode {
      * @warning This relies on the assumption that values are ordered the same for every tuple in the bulk insert
      */
     std::vector<catalog::col_oid_t> parameter_info_;
+
+    /**
+     * vector of indexes used by this node
+     */
+    std::vector<catalog::index_oid_t> index_oids_;
   };
 
  private:
@@ -173,7 +187,7 @@ class InsertPlanNode : public AbstractPlanNode {
    * @param idx index of tuple in values vecor
    * @return values to be inserted
    */
-  const std::vector<type::TransientValue> &GetValues(uint32_t idx) const { return values_[idx]; }
+  const std::vector<type::TransientValue> &GetValues(const uint32_t idx) const { return values_[idx]; }
 
   /**
    * @return the information of insert parameters
@@ -184,12 +198,17 @@ class InsertPlanNode : public AbstractPlanNode {
    * @param value_idx index of value being inserted
    * @return OID of column where value should be inserted
    */
-  const catalog::col_oid_t GetColumnOidForValue(uint32_t value_idx) const { return parameter_info_.at(value_idx); }
+  catalog::col_oid_t GetColumnOidForValue(const uint32_t value_idx) const { return parameter_info_.at(value_idx); }
 
   /**
    * @return number of tuples to insert
    */
   size_t GetBulkInsertCount() const { return values_.size(); }
+
+  /**
+   * @return the index_oids used
+   */
+  const std::vector<catalog::index_oid_t> &GetIndexOids() const { return index_oids_; }
 
   /**
    * @return the hashed value of this plan node
@@ -230,6 +249,11 @@ class InsertPlanNode : public AbstractPlanNode {
    * @warning This relies on the assumption that values are ordered the same for every tuple in the bulk insert
    */
   std::vector<catalog::col_oid_t> parameter_info_;
+
+  /**
+   * vector of indexes used by this node
+   */
+  std::vector<catalog::index_oid_t> index_oids_;
 };
 
 DEFINE_JSON_DECLARATIONS(InsertPlanNode);

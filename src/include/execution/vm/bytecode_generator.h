@@ -83,7 +83,6 @@ class BytecodeGenerator : public ast::AstVisitor<BytecodeGenerator> {
   void VisitBuiltinSizeOfCall(ast::CallExpr *call);
   void VisitBuiltinTrigCall(ast::CallExpr *call, ast::Builtin builtin);
   void VisitBuiltinOutputCall(ast::CallExpr *call, ast::Builtin builtin);
-  void VisitBuiltinInsertCall(ast::CallExpr *call, ast::Builtin builtin);
   void VisitBuiltinIndexIteratorCall(ast::CallExpr *call, ast::Builtin builtin);
 
   // Dispatched from VisitCallExpr() for handling builtins
@@ -121,7 +120,7 @@ class BytecodeGenerator : public ast::AstVisitor<BytecodeGenerator> {
   // the result should be stored
   void VisitExpressionForRValue(ast::Expr *expr, LocalVar dest);
 
-  enum class TestFallthrough : u8 { None, Then, Else };
+  enum class TestFallthrough : uint8_t { None, Then, Else };
 
   void VisitExpressionForTest(ast::Expr *expr, BytecodeLabel *then_label, BytecodeLabel *else_label,
                               TestFallthrough fallthrough);
@@ -143,7 +142,7 @@ class BytecodeGenerator : public ast::AstVisitor<BytecodeGenerator> {
   /**
    * @return the bytecode emitter
    */
-  BytecodeEmitter *emitter() { return &emitter_; }
+  BytecodeEmitter *Emitter() { return &emitter_; }
 
  private:
   // Lookup a function's ID by its name
@@ -153,15 +152,15 @@ class BytecodeGenerator : public ast::AstVisitor<BytecodeGenerator> {
   // Accessors
   // -------------------------------------------------------
 
-  ExpressionResultScope *execution_result() { return execution_result_; }
+  ExpressionResultScope *ExecutionResult() { return execution_result_; }
 
-  void set_execution_result(ExpressionResultScope *execution_result) { execution_result_ = execution_result; }
+  void SetExecutionResult(ExpressionResultScope *execution_result) { execution_result_ = execution_result; }
 
-  FunctionInfo *current_function() { return &functions_.back(); }
+  FunctionInfo *CurrentFunction() { return &functions_.back(); }
 
  private:
   // The bytecode generated during compilation
-  std::vector<u8> bytecode_;
+  std::vector<uint8_t> bytecode_;
 
   // Information about all generated functions
   std::vector<FunctionInfo> functions_;

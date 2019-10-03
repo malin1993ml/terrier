@@ -1,3 +1,4 @@
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -35,7 +36,8 @@ TEST_F(TableVectorIteratorTest, EmptyIteratorTest) {
   // Check to see that iteration doesn't begin without an input block
   //
   auto table_oid = exec_ctx_->GetAccessor()->GetTableOid(NSOid(), "empty_table");
-  TableVectorIterator iter(!table_oid, exec_ctx_.get());
+  std::array<uint32_t, 1> col_oids{1};
+  TableVectorIterator iter(exec_ctx_.get(), !table_oid, col_oids.data(), static_cast<uint32_t>(col_oids.size()));
   iter.Init();
   ASSERT_FALSE(iter.Advance());
 }
@@ -47,17 +49,16 @@ TEST_F(TableVectorIteratorTest, SimpleIteratorTest) {
   //
 
   auto table_oid = exec_ctx_->GetAccessor()->GetTableOid(NSOid(), "test_1");
-  const auto &schema = exec_ctx_->GetAccessor()->GetSchema(table_oid);
-  TableVectorIterator iter(!table_oid, exec_ctx_.get());
-  iter.AddCol(!schema.GetColumn("colA").Oid());
+  std::array<uint32_t, 1> col_oids{1};
+  TableVectorIterator iter(exec_ctx_.get(), !table_oid, col_oids.data(), static_cast<uint32_t>(col_oids.size()));
   iter.Init();
-  ProjectedColumnsIterator *pci = iter.projected_columns_iterator();
+  ProjectedColumnsIterator *pci = iter.GetProjectedColumnsIterator();
 
-  u32 num_tuples = 0;
-  i32 prev_val{0};
+  uint32_t num_tuples = 0;
+  int32_t prev_val{0};
   while (iter.Advance()) {
     for (; pci->HasNext(); pci->Advance()) {
-      auto *val = pci->Get<i32, false>(0, nullptr);
+      auto *val = pci->Get<int32_t, false>(0, nullptr);
       if (num_tuples > 0) {
         ASSERT_EQ(*val, prev_val + 1);
       }
@@ -66,27 +67,28 @@ TEST_F(TableVectorIteratorTest, SimpleIteratorTest) {
     }
     pci->Reset();
   }
-  EXPECT_EQ(sql::test1_size, num_tuples);
+  EXPECT_EQ(sql::TEST1_SIZE, num_tuples);
 }
 
 // NOLINTNEXTLINE
-TEST_F(TableVectorIteratorTest, NullableTypesIteratorTest) {
+TEST_F(TableVectorIteratorTest, MultipleTypesIteratorTest) {
   //
   // Ensure we iterate over the whole table even the types of the columns are
   // different
   //
 
   auto table_oid = exec_ctx_->GetAccessor()->GetTableOid(NSOid(), "test_2");
-  TableVectorIterator iter(!table_oid, exec_ctx_.get());
+  std::array<uint32_t, 4> col_oids{1, 2, 3, 4};
+  TableVectorIterator iter(exec_ctx_.get(), !table_oid, col_oids.data(), static_cast<uint32_t>(col_oids.size()));
   iter.Init();
-  ProjectedColumnsIterator *pci = iter.projected_columns_iterator();
+  ProjectedColumnsIterator *pci = iter.GetProjectedColumnsIterator();
 
-  u32 num_tuples = 0;
-  i16 prev_val{0};
+  uint32_t num_tuples = 0;
+  int16_t prev_val{0};
   while (iter.Advance()) {
     for (; pci->HasNext(); pci->Advance()) {
       // The serial column is the smallest one (SmallInt type), so it should be the last index in the storage layer.
-      auto *val = pci->Get<i16, false>(3, nullptr);
+      auto *val = pci->Get<int16_t, false>(3, nullptr);
       if (num_tuples > 0) {
         ASSERT_EQ(*val, prev_val + 1);
       }
@@ -95,28 +97,27 @@ TEST_F(TableVectorIteratorTest, NullableTypesIteratorTest) {
     }
     pci->Reset();
   }
-  EXPECT_EQ(sql::test2_size, num_tuples);
+  EXPECT_EQ(sql::TEST2_SIZE, num_tuples);
 }
 
 // NOLINTNEXTLINE
-TEST_F(TableVectorIteratorTest, IteratorAddColTest) {
+TEST_F(TableVectorIteratorTest, IteratorColOidsTest) {
   //
   // Ensure we only iterate over specified columns
   //
 
   auto table_oid = exec_ctx_->GetAccessor()->GetTableOid(NSOid(), "test_2");
-  TableVectorIterator iter(!table_oid, exec_ctx_.get());
-  const auto &schema = exec_ctx_->GetAccessor()->GetSchema(table_oid);
-  iter.AddCol(!schema.GetColumn("col1").Oid());
+  std::array<uint32_t, 1> col_oids{1};
+  TableVectorIterator iter(exec_ctx_.get(), !table_oid, col_oids.data(), static_cast<uint32_t>(col_oids.size()));
   iter.Init();
-  ProjectedColumnsIterator *pci = iter.projected_columns_iterator();
+  ProjectedColumnsIterator *pci = iter.GetProjectedColumnsIterator();
 
-  u32 num_tuples = 0;
-  i16 prev_val{0};
+  uint32_t num_tuples = 0;
+  int16_t prev_val{0};
   while (iter.Advance()) {
     for (; pci->HasNext(); pci->Advance()) {
       // Because we only specified one column, its index is 0 instead of three
-      auto *val = pci->Get<i16, false>(0, nullptr);
+      auto *val = pci->Get<int16_t, false>(0, nullptr);
       if (num_tuples > 0) {
         ASSERT_EQ(*val, prev_val + 1);
       }
@@ -125,7 +126,7 @@ TEST_F(TableVectorIteratorTest, IteratorAddColTest) {
     }
     pci->Reset();
   }
-  EXPECT_EQ(sql::test2_size, num_tuples);
+  EXPECT_EQ(sql::TEST2_SIZE, num_tuples);
 }
 
 }  // namespace terrier::execution::sql::test

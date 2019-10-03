@@ -1,13 +1,23 @@
+// Perform:
+// select colA from test_1 WHERE colA < 500;
+//
+// Should output 500 (number of output rows)
+// This tests just makes sure that reading multiple columns does not break the code.
+
 fun main(execCtx: *ExecutionContext) -> int64 {
   var ret = 0
   var tvi: TableVectorIterator
-  @tableIterConstructBind(&tvi, "test_1", execCtx, "t1")
-  @tableIterAddColBind(&tvi, "t1", "colA")
-  @tableIterPerformInitBind(&tvi, "t1")
+  var oids: [4]uint32
+  oids[0] = 1 // colA
+  oids[1] = 2 // colB
+  oids[2] = 3 // colC
+  oids[3] = 4 // colD
+
+  @tableIterInitBind(&tvi, execCtx, "test_1", oids)
   for (@tableIterAdvance(&tvi)) {
     var pci = @tableIterGetPCI(&tvi)
     for (; @pciHasNext(pci); @pciAdvance(pci)) {
-      var cola = @pciGetBind(pci, "t1", "colA")
+      var cola = @pciGetInt(pci, 0)
       if (cola < 500) {
         ret = ret + 1
       }
@@ -17,3 +27,4 @@ fun main(execCtx: *ExecutionContext) -> int64 {
   @tableIterClose(&tvi)
   return ret
 }
+

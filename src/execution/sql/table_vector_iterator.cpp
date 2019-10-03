@@ -9,29 +9,25 @@
 #include "tbb/task_scheduler_init.h"
 
 namespace terrier::execution::sql {
-TableVectorIterator::TableVectorIterator(u32 table_oid, exec::ExecutionContext *exec_ctx)
-    : table_oid_(table_oid), exec_ctx_(exec_ctx) {}
+TableVectorIterator::TableVectorIterator(exec::ExecutionContext *exec_ctx, uint32_t table_oid, uint32_t *col_oids,
+                                         uint32_t num_oids)
+    : exec_ctx_(exec_ctx), table_oid_(table_oid), col_oids_(col_oids, col_oids + num_oids) {}
 
-TableVectorIterator::~TableVectorIterator() { delete[] buffer_; }
+TableVectorIterator::~TableVectorIterator() {
+  exec_ctx_->GetMemoryPool()->Deallocate(buffer_, projected_columns_->Size());
+}
 
 bool TableVectorIterator::Init() {
   // Find the table
   table_ = exec_ctx_->GetAccessor()->GetTable(table_oid_);
-  TPL_ASSERT(table_ != nullptr, "Table must exist!!");
+  TERRIER_ASSERT(table_ != nullptr, "Table must exist!!");
 
   // Initialize the projected column
-  if (col_oids_.empty()) {
-    // TODO(Amadou): Better to throw an assertion error now that the schema order is not guaranteed?
-    // If no col_oid is passed in read all columns.
-    auto &schema = exec_ctx_->GetAccessor()->GetSchema(table_oid_);
-    for (const auto &col : schema.GetColumns()) {
-      col_oids_.emplace_back(col.Oid());
-    }
-  }
-  auto pc_map = table_->InitializerForProjectedColumns(col_oids_, kDefaultVectorSize);
-  buffer_ = common::AllocationUtil::AllocateAligned(pc_map.first.ProjectedColumnsSize());
-  projected_columns_ = pc_map.first.Initialize(buffer_);
-  initialized = true;
+  TERRIER_ASSERT(!col_oids_.empty(), "There must be at least one col oid!");
+  auto pc_init = table_->InitializerForProjectedColumns(col_oids_, common::Constants::K_DEFAULT_VECTOR_SIZE);
+  buffer_ = exec_ctx_->GetMemoryPool()->AllocateAligned(pc_init.ProjectedColumnsSize(), alignof(uint64_t), false);
+  projected_columns_ = pc_init.Initialize(buffer_);
+  initialized_ = true;
 
   // Begin iterating
   iter_ = std::make_unique<storage::DataTable::SlotIterator>(table_->begin());
@@ -39,7 +35,7 @@ bool TableVectorIterator::Init() {
 }
 
 bool TableVectorIterator::Advance() {
-  if (!initialized) return false;
+  if (!initialized_) return false;
   // First check if the iterator ended.
   if (*iter_ == table_->end()) {
     return false;
@@ -50,9 +46,9 @@ bool TableVectorIterator::Advance() {
   return true;
 }
 
-bool TableVectorIterator::ParallelScan(u32 db_oid, u32 table_oid, void *const query_state,
+bool TableVectorIterator::ParallelScan(uint32_t db_oid, uint32_t table_oid, void *const query_state,
                                        ThreadStateContainer *const thread_states, const ScanFn scan_fn,
-                                       const u32 min_grain_size) {
+                                       const uint32_t min_grain_size) {
   // TODO(Amadou): Implement Me!!
   return false;
 }

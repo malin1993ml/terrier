@@ -20,7 +20,7 @@ namespace terrier::execution::vm {
 /**
  * An enumeration capturing different execution methods and optimization levels.
  */
-enum class ExecutionMode : u8 {
+enum class ExecutionMode : uint8_t {
   // Always execute in interpreted mode
   Interpret,
   // Execute in interpreted mode, but trigger a compilation asynchronously. As
@@ -101,14 +101,14 @@ class Module {
    * @return The function address if it exists; null otherwise.
    */
   void *GetRawFunctionImpl(const FunctionId func_id) const {
-    TPL_ASSERT(func_id < bytecode_module_->num_functions(), "Out-of-bounds function access");
+    TERRIER_ASSERT(func_id < bytecode_module_->NumFunctions(), "Out-of-bounds function access");
     return functions_[func_id].load(std::memory_order_relaxed);
   }
 
   /**
    * Return the TPL bytecode module
    */
-  const BytecodeModule *bytecode_module() const { return bytecode_module_.get(); }
+  const BytecodeModule *GetBytecodeModule() const { return bytecode_module_.get(); }
 
  private:
   friend class VM;
@@ -136,7 +136,7 @@ class Module {
     }
 
     // Access the trampoline code
-    void *code() const { return mem_.base(); }
+    void *Code() const { return mem_.base(); }
 
    private:
     // Memory region where the trampoline's code is
@@ -150,7 +150,7 @@ class Module {
   void CreateFunctionTrampoline(const FunctionInfo &func, Trampoline *trampoline);
 
   // Access the raw bytecode trampoline function
-  void *GetBytecodeImpl(const FunctionId func_id) const { return bytecode_trampolines_[func_id].code(); }
+  void *GetBytecodeImpl(const FunctionId func_id) const { return bytecode_trampolines_[func_id].Code(); }
 
   // Access the compiled implementation of the function with the given ID
   void *GetCompiledImpl(const FunctionId func_id) const {
@@ -159,7 +159,7 @@ class Module {
     }
 
     const auto *func_info = GetFuncInfoById(func_id);
-    return jit_module_->GetFunctionPointer(func_info->name());
+    return jit_module_->GetFunctionPointer(func_info->Name());
   }
 
   // Compile this module into machine code. This is a blocking call.
@@ -194,11 +194,11 @@ namespace detail {
 // These functions value-copy a variable number of pass-by-value arguments into
 // a given buffer. It's assumed the buffer is large enough to hold all arguments
 
-inline void CopyAll(UNUSED u8 *buffer) {}
+inline void CopyAll(UNUSED_ATTRIBUTE uint8_t *buffer) {}
 
 template <typename HeadT, typename... RestT>
-inline void CopyAll(u8 *buffer, const HeadT &head, const RestT &... rest) {
-  std::memcpy(buffer, reinterpret_cast<const u8 *>(&head), sizeof(head));
+inline void CopyAll(uint8_t *buffer, const HeadT &head, const RestT &... rest) {
+  std::memcpy(buffer, reinterpret_cast<const uint8_t *>(&head), sizeof(head));
   CopyAll(buffer + sizeof(head), rest...);
 }
 
@@ -216,36 +216,37 @@ inline bool Module::GetFunction(const std::string &name, const ExecutionMode exe
   }
 
   // Verify argument counts
-  constexpr const u32 num_params = sizeof...(ArgTypes);
-  if (num_params != func_info->func_type()->num_params()) {
+  constexpr const uint32_t num_params = sizeof...(ArgTypes);
+  if (num_params != func_info->FuncType()->NumParams()) {
     return false;
   }
 
   switch (exec_mode) {
     case ExecutionMode::Adaptive: {
       CompileToMachineCodeAsync();
-      FALLTHROUGH;
+      TERRIER_FALLTHROUGH;
     }
     case ExecutionMode::Interpret: {
       *func = [this, func_info](ArgTypes... args) -> Ret {
+        // NOLINTNEXTLINE: bugprone-suspicious-semicolon: seems like a false positive because of constexpr
         if constexpr (std::is_void_v<Ret>) {
           // Create a temporary on-stack buffer and copy all arguments
-          u8 arg_buffer[(0ul + ... + sizeof(args))];
+          uint8_t arg_buffer[(0ul + ... + sizeof(args))];
           detail::CopyAll(arg_buffer, args...);
 
           // Invoke and finish
-          VM::InvokeFunction(this, func_info->id(), arg_buffer);
+          VM::InvokeFunction(this, func_info->Id(), arg_buffer);
           return;
         }
         // The return value
         Ret rv{};
 
         // Create a temporary on-stack buffer and copy all arguments
-        u8 arg_buffer[sizeof(Ret *) + (0ul + ... + sizeof(args))];
+        uint8_t arg_buffer[sizeof(Ret *) + (0ul + ... + sizeof(args))];
         detail::CopyAll(arg_buffer, &rv, args...);
 
         // Invoke and finish
-        VM::InvokeFunction(this, func_info->id(), arg_buffer);
+        VM::InvokeFunction(this, func_info->Id(), arg_buffer);
         return rv;
       };
       break;
@@ -253,7 +254,7 @@ inline bool Module::GetFunction(const std::string &name, const ExecutionMode exe
     case ExecutionMode::Compiled: {
       CompileToMachineCode();
       *func = [this, func_info](ArgTypes... args) -> Ret {
-        void *raw_func = functions_[func_info->id()].load(std::memory_order_relaxed);
+        void *raw_func = functions_[func_info->Id()].load(std::memory_order_relaxed);
         auto *jit_f = reinterpret_cast<Ret (*)(ArgTypes...)>(raw_func);
         return jit_f(args...);
       };

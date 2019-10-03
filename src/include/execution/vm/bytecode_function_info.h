@@ -6,9 +6,9 @@
 #include <utility>
 #include <vector>
 
+#include "common/macros.h"
 #include "execution/util/bitfield.h"
-#include "execution/util/common.h"
-#include "execution/util/macros.h"
+#include "execution/util/execution_common.h"
 
 namespace terrier::execution {
 
@@ -22,7 +22,7 @@ namespace vm {
 /**
  * Function IDs are 16-bit numbers. These are used in encoded bytecode.
  */
-using FunctionId = u16;
+using FunctionId = uint16_t;
 
 /**
  * LocalInfo captures information about any local variable allocated in a
@@ -40,37 +40,37 @@ class LocalInfo {
   /**
    * The kind of local variable
    */
-  enum class Kind : u8 { Var, Parameter };
+  enum class Kind : uint8_t { Var, Parameter };
 
   /**
    * Construct a local with the given, name, type, offset and kind
    */
-  LocalInfo(std::string name, ast::Type *type, u32 offset, Kind kind) noexcept;
+  LocalInfo(std::string name, ast::Type *type, uint32_t offset, Kind kind) noexcept;
 
   /**
    * Return true if this local variable a parameter to a function
    */
-  bool is_parameter() const { return kind_ == Kind::Parameter; }
+  bool IsParameter() const { return kind_ == Kind::Parameter; }
 
   /**
    * Return the name of this local variable
    */
-  const std::string &name() const { return name_; }
+  const std::string &Name() const { return name_; }
 
   /**
    * Return the TPL type of this local variable
    */
-  ast::Type *type() const { return type_; }
+  ast::Type *GetType() const { return type_; }
 
   /**
    * Return the offset (in bytes) of this local in the function's stack frame
    */
-  u32 offset() const { return offset_; }
+  uint32_t Offset() const { return offset_; }
 
   /**
    * Return the size (in bytes) of this local variable
    */
-  u32 size() const { return size_; }
+  uint32_t Size() const { return size_; }
 
  private:
   // The name of the local
@@ -78,9 +78,9 @@ class LocalInfo {
   // The TPL type of the local
   ast::Type *type_;
   // The offset (in bytes) of the local from the start of function's frame
-  u32 offset_;
+  uint32_t offset_;
   // The size (in bytes) of the local
-  u32 size_;
+  uint32_t size_;
   // The kind of the local
   Kind kind_;
 };
@@ -90,18 +90,18 @@ class LocalInfo {
  * local ID and an addressing mode.
  */
 class LocalVar {
-  static const u32 kInvalidOffset = std::numeric_limits<u32>::max() >> 1u;
+  static const uint32_t K_INVALID_OFFSET = std::numeric_limits<uint32_t>::max() >> 1u;
 
  public:
   /**
    * The different local addressing modes
    */
-  enum class AddressMode : u8 { Address = 0, Value = 1 };
+  enum class AddressMode : uint8_t { Address = 0, Value = 1 };
 
   /**
    * An invalid local variable
    */
-  LocalVar() : LocalVar(kInvalidOffset, AddressMode::Address) {}
+  LocalVar() : LocalVar(K_INVALID_OFFSET, AddressMode::Address) {}
 
   /**
    * A local variable with a given addressing mode
@@ -109,7 +109,7 @@ class LocalVar {
    *               execution/stack frame
    * @param address_mode The addressing mode for this variable
    */
-  LocalVar(u32 offset, AddressMode address_mode)
+  LocalVar(uint32_t offset, AddressMode address_mode)
       : bitfield_(AddressModeField::Encode(address_mode) | LocalOffsetField::Encode(offset)) {}
 
   /**
@@ -122,13 +122,13 @@ class LocalVar {
    * Return the offset of this local variable in the function's execution frame
    * @return The offset (in bytes) of this local in the function's frame
    */
-  u32 GetOffset() const { return LocalOffsetField::Decode(bitfield_); }
+  uint32_t GetOffset() const { return LocalOffsetField::Decode(bitfield_); }
 
   /**
    * Encode this local variable into an instruction stream
    * @return The encoded value (and its addressing mode)
    */
-  u32 Encode() const { return bitfield_; }
+  uint32_t Encode() const { return bitfield_; }
 
   /**
    * Decode the provided value from an instruction stream into a local variable
@@ -136,7 +136,7 @@ class LocalVar {
    * @param encoded_var The encoded value of the variable
    * @return The LocalVar representation
    */
-  static LocalVar Decode(u32 encoded_var) { return LocalVar(encoded_var); }
+  static LocalVar Decode(uint32_t encoded_var) { return LocalVar(encoded_var); }
 
   /**
    * Return a LocalVar that represents a dereferenced version of the local
@@ -152,7 +152,7 @@ class LocalVar {
    * Is this a valid local variable?
    * @return True if valid; false otherwise
    */
-  bool IsInvalid() const { return GetOffset() == kInvalidOffset; }
+  bool IsInvalid() const { return GetOffset() == K_INVALID_OFFSET; }
 
   /**
    * Is this local variable equal to @em other
@@ -168,13 +168,13 @@ class LocalVar {
   class AddressModeField : public util::BitField32<AddressMode, 0, 1> {};
 
   // The offset of the local variable in the function's execution frame
-  class LocalOffsetField : public util::BitField32<u32, AddressModeField::kNextBit, 31> {};
+  class LocalOffsetField : public util::BitField32<uint32_t, AddressModeField::K_NEXT_BIT, 31> {};
 
  private:
-  explicit LocalVar(u32 bitfield) : bitfield_(bitfield) {}
+  explicit LocalVar(uint32_t bitfield) : bitfield_(bitfield) {}
 
  private:
-  u32 bitfield_;
+  uint32_t bitfield_;
 };
 
 /**
@@ -193,7 +193,7 @@ class FunctionInfo {
   /**
    * Invalid id
    */
-  static constexpr FunctionId kInvalidFuncId = std::numeric_limits<u16>::max();
+  static constexpr FunctionId K_INVALID_FUNC_ID = std::numeric_limits<uint16_t>::max();
 
   /**
    * Construct a function with the given ID and name @em name
@@ -247,53 +247,53 @@ class FunctionInfo {
    * @param offset The offset in bytes of the local
    * @return A possible nullptr to the local's information
    */
-  const LocalInfo *LookupLocalInfoByOffset(u32 offset) const;
+  const LocalInfo *LookupLocalInfoByOffset(uint32_t offset) const;
 
   /**
    * Return the unique ID of this function
    */
-  FunctionId id() const { return id_; }
+  FunctionId Id() const { return id_; }
 
   /**
    * Return the name of this function
    */
-  const std::string &name() const { return name_; }
+  const std::string &Name() const { return name_; }
 
   /**
    * Return the TPL function type
    */
-  const ast::FunctionType *func_type() const { return func_type_; }
+  const ast::FunctionType *FuncType() const { return func_type_; }
 
   /**
    * Return the range of bytecode for this function in the bytecode module
    */
-  std::pair<std::size_t, std::size_t> bytecode_range() const { return bytecode_range_; }
+  std::pair<std::size_t, std::size_t> BytecodeRange() const { return bytecode_range_; }
 
   /**
    * Return a constant view of all the local variables in this function
    */
-  const std::vector<LocalInfo> &locals() const { return locals_; }
+  const std::vector<LocalInfo> &Locals() const { return locals_; }
 
   /**
    * Return the size of the stack frame this function requires
    */
-  std::size_t frame_size() const { return frame_size_; }
+  std::size_t FrameSize() const { return frame_size_; }
 
   /**
    * Return the byte position where the first input argument exists in the
    * function's local execution frame
    */
-  std::size_t params_start_pos() const { return params_start_pos_; }
+  std::size_t ParamsStartPos() const { return params_start_pos_; }
 
   /**
    * Return the size (in bytes) of all input arguments, including alignment
    */
-  std::size_t params_size() const { return params_size_; }
+  std::size_t ParamsSize() const { return params_size_; }
 
   /**
    * Return the number of parameters to this function
    */
-  u32 num_params() const { return num_params_; }
+  uint32_t NumParams() const { return num_params_; }
 
  private:
   friend class BytecodeGenerator;
@@ -301,9 +301,9 @@ class FunctionInfo {
   // Mark the range of bytecode for this function in its module. This is set
   // by the BytecodeGenerator during code generation after this function's
   // bytecode range has been discovered.
-  void set_bytecode_range(std::size_t start_offset, std::size_t end_offset) {
+  void SetBytecodeRange(std::size_t start_offset, std::size_t end_offset) {
     // Functions must have, at least, one bytecode instruction (i.e., RETURN)
-    TPL_ASSERT(start_offset < end_offset, "Starting offset must be smaller than ending offset");
+    TERRIER_ASSERT(start_offset < end_offset, "Starting offset must be smaller than ending offset");
     bytecode_range_ = std::make_pair(start_offset, end_offset);
   }
 
@@ -328,9 +328,9 @@ class FunctionInfo {
   // The size (in bytes) of all input arguments (including alignment)
   std::size_t params_size_;
   // The number of input parameters
-  u32 num_params_;
+  uint32_t num_params_;
   // The number of temporary variables
-  u32 num_temps_;
+  uint32_t num_temps_;
 };
 
 }  // namespace vm

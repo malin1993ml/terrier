@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "execution/util/macros.h"
+#include "common/macros.h"
 #include "execution/util/timer.h"
 
 namespace terrier::execution::util {
@@ -28,17 +28,17 @@ class StageTimer {
     /**
      * Return the name of this stage.
      */
-    const char *name() const noexcept { return name_; }
+    const char *Name() const noexcept { return name_; }
 
     /**
      * Return the time this stage took in the configured resolution ratio.
      */
-    double time() const noexcept { return time_; }
+    double Time() const noexcept { return time_; }
 
    private:
     friend class StageTimer<ResolutionRatio>;
 
-    void set_time(const double time) { time_ = time; }
+    void SetTime(const double time) { time_ = time; }
 
    private:
     // The name
@@ -71,16 +71,16 @@ class StageTimer {
    * Exit the current stage.
    */
   void ExitStage() {
-    TPL_ASSERT(!stages_.empty(), "Missing call to EnterStage()");
-    TPL_ASSERT(stages_.back().time() == 0, "Duplicate call to ExitStage()");
+    TERRIER_ASSERT(!stages_.empty(), "Missing call to EnterStage()");
+    TERRIER_ASSERT(stages_.back().Time() == 0, "Duplicate call to ExitStage()");
     timer_.Stop();
-    stages_.back().set_time(timer_.elapsed());
+    stages_.back().SetTime(timer_.Elapsed());
   }
 
   /**
    * Access information on all stages.
    */
-  const std::vector<Stage> GetStages() const { return stages_; }
+  const std::vector<Stage> &GetStages() const { return stages_; }
 
  private:
   util::Timer<ResolutionRatio> timer_;

@@ -25,7 +25,7 @@ namespace terrier::execution::ast {
 template <typename Subclass, typename RetType = void>
 class AstVisitor {
  public:
-#define DISPATCH(Type) return this->impl()->Visit##Type(static_cast<Type *>(node));
+#define DISPATCH(Type) return this->Impl()->Visit##Type(static_cast<Type *>(node));
 
   /**
    * Visits an arbitrary node
@@ -33,8 +33,10 @@ class AstVisitor {
    * @return return value of the node
    */
   RetType Visit(AstNode *node) {
-    switch (node->kind()) {
-      default: { llvm_unreachable("Impossible node type"); }
+    switch (node->GetKind()) {
+      default: {
+        llvm_unreachable("Impossible node type");
+      }
 #define T(kind)               \
   case AstNode::Kind::kind: { \
     DISPATCH(kind)            \
@@ -49,21 +51,21 @@ class AstVisitor {
    * @param decl node to visit
    * @return default return type
    */
-  RetType VisitDecl(UNUSED Decl *decl) { return RetType(); }
+  RetType VisitDecl(UNUSED_ATTRIBUTE Decl *decl) { return RetType(); }
 
   /**
    * Visits a statement node
    * @param stmt node to visit
    * @return default return type
    */
-  RetType VisitStmt(UNUSED Stmt *stmt) { return RetType(); }
+  RetType VisitStmt(UNUSED_ATTRIBUTE Stmt *stmt) { return RetType(); }
 
   /**
    * Visits a expression node
    * @param expr node to visit
    * @return default return type
    */
-  RetType VisitExpr(UNUSED Expr *expr) { return RetType(); }
+  RetType VisitExpr(UNUSED_ATTRIBUTE Expr *expr) { return RetType(); }
 
 #define T(DeclType) \
   RetType Visit##DeclType(DeclType *node) { DISPATCH(Decl); }
@@ -86,7 +88,7 @@ class AstVisitor {
   /**
    * @return the actual implementation of this class
    */
-  Subclass *impl() { return static_cast<Subclass *>(this); }
+  Subclass *Impl() { return static_cast<Subclass *>(this); }
 };
 
 }  // namespace terrier::execution::ast

@@ -9,7 +9,7 @@ namespace terrier::execution::sql {
 /**
  * Comparison functions for SQL values.
  */
-class ComparisonFunctions {
+class EXPORT ComparisonFunctions {
  public:
   // Delete to force only static functions
   ComparisonFunctions() = delete;
@@ -177,12 +177,13 @@ class ComparisonFunctions {
    * @param min_len The minimum length between the two input strings.
    * @return The appropriate signed value indicating comparison order.
    */
-  static i32 RawStringCompare(const char *s1, std::size_t len1, const char *s2, std::size_t len2, std::size_t min_len) {
+  static int32_t RawStringCompare(const char *s1, std::size_t len1, const char *s2, std::size_t len2,
+                                  std::size_t min_len) {
     const auto result = (min_len == 0) ? 0 : std::memcmp(s1, s2, min_len);
     if (result != 0) {
       return result;
     }
-    return i32(len1) - i32(len2);
+    return int32_t(len1) - int32_t(len2);
   }
 
  private:
@@ -196,19 +197,19 @@ class ComparisonFunctions {
    * @param v2 The second string.
    * @return The appropriate signed value indicating comparison order.
    */
-  static i32 Compare(const StringVal &v1, const StringVal &v2) {
-    TPL_ASSERT(!v1.is_null && !v2.is_null, "Both input strings must not be null");
-    const auto min_len = std::min(v1.len, v2.len);
+  static int32_t Compare(const StringVal &v1, const StringVal &v2) {
+    TERRIER_ASSERT(!v1.is_null_ && !v2.is_null_, "Both input strings must not be null");
+    const auto min_len = std::min(v1.len_, v2.len_);
     if (min_len == 0) {
-      if (v1.len == v2.len) {
+      if (v1.len_ == v2.len_) {
         return 0;
       }
-      if (v1.len == 0) {
+      if (v1.len_ == 0) {
         return -1;
       }
       return 1;
     }
-    return RawStringCompare(v1.Content(), v1.len, v2.Content(), v2.len, min_len);
+    return RawStringCompare(v1.Content(), v1.len_, v2.Content(), v2.len_, min_len);
   }
 };
 
@@ -221,13 +222,13 @@ class ComparisonFunctions {
 
 #define BINARY_COMPARISON_NUMERIC_FN_HIDE_NULL(NAME, TYPE, OP)                                   \
   inline void ComparisonFunctions::NAME##TYPE(BoolVal *result, const TYPE &v1, const TYPE &v2) { \
-    result->is_null = (v1.is_null || v2.is_null);                                                \
-    result->val = v1.val OP v2.val;                                                              \
+    result->is_null_ = (v1.is_null_ || v2.is_null_);                                             \
+    result->val_ = v1.val_ OP v2.val_;                                                           \
   }
 
 #define BINARY_COMPARISON_STRING_FN_HIDE_NULL(NAME, TYPE, OP)                                    \
   inline void ComparisonFunctions::NAME##TYPE(BoolVal *result, const TYPE &v1, const TYPE &v2) { \
-    if (v1.is_null || v2.is_null) {                                                              \
+    if (v1.is_null_ || v2.is_null_) {                                                            \
       *result = BoolVal::Null();                                                                 \
       return;                                                                                    \
     }                                                                                            \
@@ -236,8 +237,12 @@ class ComparisonFunctions {
 
 #define BINARY_COMPARISON_DATE_FN_HIDE_NULL(NAME, TYPE, OP)                                      \
   inline void ComparisonFunctions::NAME##TYPE(BoolVal *result, const TYPE &v1, const TYPE &v2) { \
-    result->is_null = (v1.is_null || v2.is_null);                                                \
-    result->val = v1.ymd OP v2.ymd;                                                              \
+    if (v1.is_null_ || v2.is_null_) {                                                            \
+      *result = BoolVal::Null();                                                                 \
+      return;                                                                                    \
+    }                                                                                            \
+    result->is_null_ = false;                                                                    \
+    result->val_ = v1.ymd_ OP v2.ymd_;                                                           \
   }
 
 #define BINARY_COMPARISON_ALL_TYPES(NAME, OP)                \

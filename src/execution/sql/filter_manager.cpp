@@ -20,7 +20,7 @@ namespace {
 std::unique_ptr<bandit::Policy> CreatePolicy(bandit::Policy::Kind policy_kind) {
   switch (policy_kind) {
     case bandit::Policy::Kind::EpsilonGreedy: {
-      return std::make_unique<bandit::EpsilonGreedyPolicy>(bandit::EpsilonGreedyPolicy::kDefaultEpsilon);
+      return std::make_unique<bandit::EpsilonGreedyPolicy>(bandit::EpsilonGreedyPolicy::K_DEFAULT_EPSILON);
     }
     case bandit::Policy::Kind::Greedy: {
       return std::make_unique<bandit::GreedyPolicy>();
@@ -29,12 +29,14 @@ std::unique_ptr<bandit::Policy> CreatePolicy(bandit::Policy::Kind policy_kind) {
       return std::make_unique<bandit::RandomPolicy>();
     }
     case bandit::Policy::Kind::UCB: {
-      return std::make_unique<bandit::UCBPolicy>(bandit::UCBPolicy::kDefaultUCBHyperParam);
+      return std::make_unique<bandit::UCBPolicy>(bandit::UCBPolicy::K_DEFAULT_UCB_HYPER_PARAM);
     }
     case bandit::Policy::Kind::FixedAction: {
       return std::make_unique<bandit::FixedActionPolicy>(0);
     }
-    default: { UNREACHABLE("Impossible bandit policy kind"); }
+    default: {
+      UNREACHABLE("Impossible bandit policy kind");
+    }
   }
 }
 
@@ -45,14 +47,14 @@ FilterManager::FilterManager(const bandit::Policy::Kind policy_kind) : policy_(C
 FilterManager::~FilterManager() = default;
 
 void FilterManager::StartNewClause() {
-  TPL_ASSERT(!finalized_, "Cannot modify filter manager after finalization");
+  TERRIER_ASSERT(!finalized_, "Cannot modify filter manager after finalization");
   clauses_.emplace_back();
 }
 
 void FilterManager::InsertClauseFlavor(const FilterManager::MatchFn flavor) {
-  TPL_ASSERT(!finalized_, "Cannot modify filter manager after finalization");
-  TPL_ASSERT(!clauses_.empty(), "Inserting flavor without clause");
-  clauses_.back().flavors.push_back(flavor);
+  TERRIER_ASSERT(!finalized_, "Cannot modify filter manager after finalization");
+  TERRIER_ASSERT(!clauses_.empty(), "Inserting flavor without clause");
+  clauses_.back().flavors_.push_back(flavor);
 }
 
 void FilterManager::Finalize() {
@@ -66,23 +68,23 @@ void FilterManager::Finalize() {
   std::iota(optimal_clause_order_.begin(), optimal_clause_order_.end(), 0);
 
   // Setup the agents, once per clause
-  for (u32 idx = 0; idx < clauses_.size(); idx++) {
-    agents_.emplace_back(policy_.get(), ClauseAt(idx)->num_flavors());
+  for (uint32_t idx = 0; idx < clauses_.size(); idx++) {
+    agents_.emplace_back(policy_.get(), ClauseAt(idx)->NumFlavors());
   }
 
   finalized_ = true;
 }
 
 void FilterManager::RunFilters(ProjectedColumnsIterator *const pci) {
-  TPL_ASSERT(finalized_, "Must finalize the filter before it can be used");
+  TERRIER_ASSERT(finalized_, "Must finalize the filter before it can be used");
 
   // Execute the clauses in what we currently believe to be the optimal order
-  for (const u32 opt_clause_idx : optimal_clause_order_) {
+  for (const uint32_t opt_clause_idx : optimal_clause_order_) {
     RunFilterClause(pci, opt_clause_idx);
   }
 }
 
-void FilterManager::RunFilterClause(ProjectedColumnsIterator *const pci, const u32 clause_index) {
+void FilterManager::RunFilterClause(ProjectedColumnsIterator *const pci, const uint32_t clause_index) {
   //
   // This function will execute the clause at the given clause index. But, we'll
   // be smart about it. We'll use our multi-armed bandit agent to predict the
@@ -96,8 +98,8 @@ void FilterManager::RunFilterClause(ProjectedColumnsIterator *const pci, const u
 
   // Select the apparent optimal flavor of the clause to execute
   bandit::Agent *agent = GetAgentFor(clause_index);
-  const u32 opt_flavor_idx = agent->NextAction();
-  const auto opt_match_func = ClauseAt(clause_index)->flavors[opt_flavor_idx];
+  const uint32_t opt_flavor_idx = agent->NextAction();
+  const auto opt_match_func = ClauseAt(clause_index)->flavors_[opt_flavor_idx];
 
   // Run the filter
   // NOLINTNEXTLINE
@@ -110,24 +112,24 @@ void FilterManager::RunFilterClause(ProjectedColumnsIterator *const pci, const u
   EXECUTION_LOG_DEBUG("Clause {} observed reward {}", clause_index, reward);
 }
 
-std::pair<u32, double> FilterManager::RunFilterClauseImpl(ProjectedColumnsIterator *const pci,
-                                                          const FilterManager::MatchFn func) {
+std::pair<uint32_t, double> FilterManager::RunFilterClauseImpl(ProjectedColumnsIterator *const pci,
+                                                               const FilterManager::MatchFn func) {
   // Time and execute the match function, returning the number of selected
   // tuples and the execution time in milliseconds
   util::Timer<> timer;
   timer.Start();
-  const u32 num_selected = func(pci);
+  const uint32_t num_selected = func(pci);
   timer.Stop();
-  return std::make_pair(num_selected, timer.elapsed());
+  return std::make_pair(num_selected, timer.Elapsed());
 }
 
-u32 FilterManager::GetOptimalFlavorForClause(const u32 clause_index) const {
+uint32_t FilterManager::GetOptimalFlavorForClause(const uint32_t clause_index) const {
   const bandit::Agent *agent = GetAgentFor(clause_index);
   return agent->GetCurrentOptimalAction();
 }
 
-bandit::Agent *FilterManager::GetAgentFor(const u32 clause_index) { return &agents_[clause_index]; }
+bandit::Agent *FilterManager::GetAgentFor(const uint32_t clause_index) { return &agents_[clause_index]; }
 
-const bandit::Agent *FilterManager::GetAgentFor(const u32 clause_index) const { return &agents_[clause_index]; }
+const bandit::Agent *FilterManager::GetAgentFor(const uint32_t clause_index) const { return &agents_[clause_index]; }
 
 }  // namespace terrier::execution::sql
