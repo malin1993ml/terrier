@@ -15,6 +15,8 @@ using IndexExpression = std::shared_ptr<parser::AbstractExpression>;
 
 /**
  * Plan node for nested loop joins
+ * TODO(Amadou): This class is fairly similar to the IndexScan plan node. However, the translators are diffrerent.
+ * Refactor if possible.
  */
 class IndexJoinPlanNode : public AbstractJoinPlanNode {
  public:
@@ -23,7 +25,7 @@ class IndexJoinPlanNode : public AbstractJoinPlanNode {
    */
   class Builder : public AbstractJoinPlanNode::Builder<Builder> {
    public:
-    Builder () = default;
+    Builder() = default;
 
     /**
      * Don't allow builder to be copied or moved
@@ -76,9 +78,7 @@ class IndexJoinPlanNode : public AbstractJoinPlanNode {
      */
     catalog::table_oid_t table_oid_;
 
-    /**line:0:0>
-|     | |- IndexExpr (0x629000001180) <line:0:0>  'uint32'
-|     | | |- IdentifierExpr (0x629000001150) <line:0:0>  '[2
+    /**
      * Index Cols
      */
     std::unordered_map<catalog::indexkeycol_oid_t, IndexExpression> index_cols_{};
@@ -107,7 +107,7 @@ class IndexJoinPlanNode : public AbstractJoinPlanNode {
    */
   IndexJoinPlanNode() = default;
 
-  DISALLOW_COPY_AND_MOVE(IndexJoinPlanNode)
+  DISALLOW_COPY_AND_MOVE(IndexJoinPlanNode);
 
   /**
    * @return the type of this plan node
