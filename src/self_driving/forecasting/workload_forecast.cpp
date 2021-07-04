@@ -62,13 +62,14 @@ WorkloadForecast::WorkloadForecast(const WorkloadForecastPrediction &inference, 
 void WorkloadForecast::CreateSegments() {
   std::unordered_map<execution::query_id_t, double> curr_segment;
 
-  uint64_t curr_time = query_timestamp_to_id_.begin()->first;
+  uint64_t curr_time = query_timestamp_to_id_.begin()->first / forecast_interval_ * forecast_interval_;
 
   // We assume the traces are sorted by timestamp in increasing order
   for (auto &it : query_timestamp_to_id_) {
     if (it.first > curr_time + forecast_interval_) {
+      printf("Adding forecast segment with size %lu\n", curr_segment.size());
       forecast_segments_.emplace_back(std::move(curr_segment));
-      curr_time = it.first;
+      curr_time += forecast_interval_;
       curr_segment = std::unordered_map<execution::query_id_t, double>();
     }
 
@@ -76,9 +77,8 @@ void WorkloadForecast::CreateSegments() {
     curr_segment[it.second] += 1;
   }
 
-  if (!curr_segment.empty()) {
-    forecast_segments_.emplace_back(std::move(curr_segment));
-  }
+  printf("Adding forecast segment with size %lu\n", curr_segment.size());
+  forecast_segments_.emplace_back(std::move(curr_segment));
   num_forecast_segment_ = forecast_segments_.size();
 }
 
@@ -145,16 +145,23 @@ void WorkloadForecast::LoadQueryText() {
     db_oid = static_cast<uint64_t>(std::stoi(val_vec[0]));
     query_id = static_cast<execution::query_id_t>(std::stoi(val_vec[1]));
     type_string = val_vec[4];
-    workload_metadata_.query_id_to_text_[query_id] = val_vec[query_text_col];
+    // Only record the query text once
+    auto &query_text_to_id = workload_metadata_.query_text_to_id_;
+    if (query_text_to_id.find(val_vec[query_text_col]) == query_text_to_id.end()) {
+      query_text_to_id[val_vec[query_text_col]] = query_id;
+      workload_metadata_.query_id_to_text_[query_id] = val_vec[query_text_col];
 
-    // extract each type in the type_string
-    while ((pos = type_string.find(';')) != std::string::npos) {
-      param_types.push_back(type::TypeUtil::TypeIdFromString(type_string.substr(0, pos)));
-      type_string.erase(0, pos + 1);
+      // extract each type in the type_string
+      while ((pos = type_string.find(';')) != std::string::npos) {
+        param_types.push_back(type::TypeUtil::TypeIdFromString(type_string.substr(0, pos)));
+        type_string.erase(0, pos + 1);
+      }
+
+      workload_metadata_.query_id_to_dboid_[query_id] = catalog::db_oid_t(db_oid);
+      workload_metadata_.query_id_to_param_types_[query_id] = std::move(param_types);
+    } else {
+      workload_metadata_.query_id_to_id_[query_id] = query_text_to_id[val_vec[query_text_col]];
     }
-
-    workload_metadata_.query_id_to_dboid_[query_id] = catalog::db_oid_t(db_oid);
-    workload_metadata_.query_id_to_param_types_[query_id] = std::move(param_types);
   }
   // Close file
   query_text_file.close();
@@ -207,6 +214,9 @@ void WorkloadForecast::LoadQueryTrace() {
     // Database id is recorded here for consistency with LoadQueryText but no use for now.
     // db_oid = static_cast<uint64_t>(std::stoi(val_vec[0]));
     query_id = static_cast<execution::query_id_t>(std::stoi(val_vec[1]));
+    // Merge the query_id if the query has the same text with a previous query
+    if (workload_metadata_.query_id_to_id_.find(query_id) != workload_metadata_.query_id_to_id_.end())
+      query_id = workload_metadata_.query_id_to_id_[query_id];
     param_string = val_vec[3];
 
     // extract each parameter in the param_string

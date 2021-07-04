@@ -265,6 +265,12 @@ void TreeNode::ChildrenRollout(PlanningContext *planning_context,
 
     // Add new child with proper action state
     new_action_state.SetIntervals(action_plan_end_index_ + 1, tree_end_segment_index);
+
+    // Slightly increase the cost if this is not the no-op action. This avoids oscillation between ineffective actions
+    if (action_ptr->GetActionType() != ActionType::NO_OP) {
+      child_segment_cost *= 1.01;
+      later_segments_cost *= 1.01;
+    }
     children_.push_back(std::make_unique<TreeNode>(common::ManagedPointer(this), action_id, action_plan_end_index_ + 1,
                                                    child_segment_cost, later_segments_cost,
                                                    action_plan_end_memory_consumption, new_action_state));
@@ -283,6 +289,7 @@ double TreeNode::ComputeCostWithAction(PlanningContext *planning_context,
   // How many segments does it take for this action to finish
   uint64_t action_segments = 0;
   double estimated_elapsed = action->GetEstimatedElapsedUs();
+  printf("Compute cost with action with elapsed time %.2f\n", estimated_elapsed);
   if (estimated_elapsed > 1e-6)
     action_segments = static_cast<uint64_t>(estimated_elapsed) / forecast->GetForecastInterval() + 1;
   // Cannot exceed tree_end_segment_index

@@ -16,6 +16,7 @@ enum class ActionType : uint8_t {
   CREATE_INDEX,
   DROP_INDEX,
   CHANGE_KNOB,
+  NO_OP,
 };
 
 }  // namespace noisepage::selfdriving::pilot

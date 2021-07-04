@@ -647,6 +647,7 @@ void PilotUtil::ComputeTableSizeRatios(const PlanningContext &planning_context, 
     }
 
     // Calculate the table size change ratio for this segment
+    memory_info->segment_table_size_ratios_.try_emplace(idx);
     for (const auto &[table_id, size_delta] : table_size_deltas) {
       double new_table_size = size_delta + static_cast<int64_t>(table_sizes[table_id]);
       if (new_table_size < 0)
@@ -708,6 +709,11 @@ void PilotUtil::EstimateCreateIndexAction(PlanningContext *planning_context, Cre
   std::unique_ptr<metrics::PipelineMetricRawData> aggregated_data = std::make_unique<metrics::PipelineMetricRawData>();
   for (auto &iter : ous->GetPipelineFeatureMap()) {
     // TODO(lin): Interpret mode by default. May want to add that as an option (knob) for the action
+    for (auto &feature : iter.second) {
+      printf("%s %lu %lu %lu %lu\n",
+             OperatingUnitUtil::ExecutionOperatingUnitTypeToString(feature.GetExecutionOperatingUnitType()).c_str(),
+             feature.GetNumRows(), feature.GetKeySize(), feature.GetNumKeys(), feature.GetNumConcurrent());
+    }
     aggregated_data->RecordPipelineData(qid, iter.first, 0, std::vector<ExecutionOperatingUnitFeature>(iter.second),
                                         resource_metrics);
   }
@@ -743,6 +749,10 @@ void PilotUtil::EstimateCreateIndexAction(PlanningContext *planning_context, Cre
       }
     }
   }
+
+  // Multiply all the predictions except for the memory and elapsed time by the number of concurrent threads
+  for (uint64_t idx = 0; idx < pred_dim - 2; ++idx)
+    pipeline_sum[idx] *= 8;
 
   create_action->SetEstimatedMetrics(std::move(pipeline_sum));
 }

@@ -132,7 +132,7 @@ class MonteCarloTreeSearch {
   std::unordered_map<std::pair<ActionState, action_id_t>, std::pair<double, uint64_t>, ActionStateActionPairHasher>
       action_apply_cost_map_;
 
-  std::vector<uint64_t> levels_to_plan_ = {1, 2, 2, 3, 3, 3, 4, 4, 4};
+  std::vector<uint64_t> levels_to_plan_ = {10, 10, 20, 20, 40, 40, 80};
 };
 }  // namespace pilot
 

@@ -14,11 +14,6 @@ namespace planner {
 class AbstractPlanNode;
 }  // namespace planner
 
-namespace parser {
-class AbstractExpression;
-class ColumnValueExpression;
-}  // namespace parser
-
 namespace selfdriving::pilot {
 
 class AbstractAction;
@@ -26,23 +21,13 @@ class AbstractAction;
 /**
  * Generate create/drop index candidate actions
  */
-class IndexActionGenerator : AbstractActionGenerator {
+class NoOpActionGenerator : AbstractActionGenerator {
  public:
   void GenerateActions(const std::vector<std::unique_ptr<planner::AbstractPlanNode>> &plans,
                        common::ManagedPointer<settings::SettingsManager> settings_manager,
                        std::map<action_id_t, std::unique_ptr<AbstractAction>> *action_map,
                        std::vector<action_id_t> *candidate_actions) override;
 
- private:
-  static void FindMissingIndex(const planner::AbstractPlanNode *plan,
-                               std::map<action_id_t, std::unique_ptr<AbstractAction>> *action_map,
-                               std::vector<action_id_t> *candidate_actions,
-                               std::set<std::string> *existing_action_commands);
-
-  static bool GenerateIndexableColumns(
-      catalog::table_oid_t table_oid, common::ManagedPointer<parser::AbstractExpression> expr,
-      std::vector<common::ManagedPointer<parser::ColumnValueExpression>> *equality_columns,
-      std::vector<common::ManagedPointer<parser::ColumnValueExpression>> *inequality_columns);
 };
 
 }  // namespace selfdriving::pilot

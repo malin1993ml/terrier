@@ -52,12 +52,15 @@ void Pilot::PerformPlanning() {
   metrics_thread->PauseMetrics();
 
   // Populate the workload forecast
+  /*
   auto metrics_output = metrics_thread->GetMetricsManager()->GetMetricOutput(metrics::MetricsComponent::QUERY_TRACE);
   bool metrics_in_db =
       metrics_output == metrics::MetricsOutput::DB || metrics_output == metrics::MetricsOutput::CSV_AND_DB;
   forecast_ = forecaster_.LoadWorkloadForecast(
       metrics_in_db ? Forecaster::WorkloadForecastInitMode::INTERNAL_TABLES_WITH_INFERENCE
                     : Forecaster::WorkloadForecastInitMode::DISK_WITH_INFERENCE);
+  */
+  forecast_ = forecaster_.LoadWorkloadForecast(Forecaster::WorkloadForecastInitMode::DISK_ONLY);
   if (forecast_ == nullptr) {
     SELFDRIVING_LOG_ERROR("Unable to initialize the WorkloadForecast information");
     metrics_thread->ResumeMetrics();
@@ -95,14 +98,21 @@ void Pilot::ActionSearch(std::vector<ActionTreeNode> *best_action_seq) {
   // TODO(wz2): May want to improve this at a later time.
   std::vector<std::vector<ActionTreeNode>> layered_action;
   mcst.BestAction(&layered_action, 3);
+  auto action_file = fopen("mcts_plan.csv", "w");
   for (size_t i = 0; i < layered_action.size(); i++) {
     ActionTreeNode &action = layered_action[i].front();
     best_action_seq->emplace_back(action);
 
-    SELFDRIVING_LOG_INFO(fmt::format("Action Selected: Time Interval: {}; Action Command: {} Applied to Database {}", i,
-                                     best_action_seq->at(i).GetActionText(),
-                                     static_cast<uint32_t>(best_action_seq->at(i).GetDbOid())));
+    SELFDRIVING_LOG_INFO(fmt::format("Action Selected: Time Interval: {}; Action Command: {} Applied to Database {}",
+                                     best_action_seq->back().GetActionStartSegmentIndex(),
+                                     best_action_seq->back().GetActionText(),
+                                     static_cast<uint32_t>(best_action_seq->back().GetDbOid())));
+    fprintf(action_file, "%lu, \"%s\"\n", best_action_seq->back().GetActionStartSegmentIndex(),
+            best_action_seq->back().GetActionText().c_str());
   }
+  fclose(action_file);
+
+  std::getchar();
 
   uint64_t timestamp = metrics::MetricsUtil::Now();
   util::SelfDrivingRecordingUtil::RecordBestActions(timestamp, layered_action, planning_context_.GetTaskManager());
@@ -138,14 +148,17 @@ void Pilot::ActionSearchBaseline(
   seq_tunining.BestAction(planning_context_.GetSettingsManager()->GetInt64(settings::Param::pilot_memory_constraint),
                           &best_action_set_seq);
 
+  auto action_file = fopen("seq_plan.csv", "w");
   for (uint64_t action_set_idx = 0; action_set_idx < best_action_set_seq.size(); action_set_idx++) {
     auto action_set = best_action_set_seq.at(action_set_idx);
     for (auto const &action UNUSED_ATTRIBUTE : action_set) {
       SELFDRIVING_LOG_INFO(fmt::format("Action Selected: Time Interval: {}; Action Command: {} Applied to Database {}",
                                        action_set_idx, action.first, static_cast<uint32_t>(action.second)));
+      fprintf(action_file, "%lu, \"%s\"\n", action_set_idx, action.first.c_str());
     }
     best_actions_seq->emplace_back(action_set);
   }
+  fclose(action_file);
 
   // Invalidate database and memory information
   planning_context_.ClearDatabases();

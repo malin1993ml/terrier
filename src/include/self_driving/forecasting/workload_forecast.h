@@ -38,6 +38,12 @@ class WorkloadMetadata {
   /** Map from query id to query text */
   std::unordered_map<execution::query_id_t, std::string> query_id_to_text_;
 
+  /** Map from query text to query id */
+  std::unordered_map<std::string, execution::query_id_t> query_text_to_id_;
+
+  /** Map from query id to the first query id with the same text */
+  std::unordered_map<execution::query_id_t, execution::query_id_t> query_id_to_id_;
+
   /** Map from query id to sample query parameters */
   std::unordered_map<execution::query_id_t, std::vector<std::vector<parser::ConstantValueExpression>>>
       query_id_to_params_;

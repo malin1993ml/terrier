@@ -325,8 +325,12 @@ void OperatingUnitRecorder::AggregateFeatures(selfdriving::ExecutionOperatingUni
       cardinality = 1;
     } break;
     case ExecutionOperatingUnitType::CREATE_INDEX: {
-      num_rows = table_num_rows;
-      cardinality = table_num_rows;
+      // num_rows = table_num_rows;
+      // cardinality = table_num_rows;
+      num_rows = 1250000;
+      cardinality = 1250000;
+      num_concurrent = 8;
+      if (num_keys == 4) num_keys = 6;
       // We extract the num_rows and cardinality from the table name if possible
       // This is a special case for mini-runners
       std::string idx_name = reinterpret_cast<const planner::CreateIndexPlanNode *>(plan)->GetIndexName();

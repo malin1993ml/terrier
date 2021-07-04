@@ -16,20 +16,25 @@ void IndexActionGenerator::GenerateActions(const std::vector<std::unique_ptr<pla
                                            common::ManagedPointer<settings::SettingsManager> settings_manager,
                                            std::map<action_id_t, std::unique_ptr<AbstractAction>> *action_map,
                                            std::vector<action_id_t> *candidate_actions) {
+  // Right now we use the commands of the existing actions to avoid duplicated actions
+  std::set<std::string> existing_action_commands;
+  for (auto &action : *candidate_actions) existing_action_commands.emplace(action_map->at(action)->GetSQLCommand());
+
   // Find the "missing" index for each plan and generate the corresponding actions
   for (auto &plan : plans) {
     // Currently using a heuristic to find the scan predicates that are not fully covered by an existing index, and
     // generate actions to build indexes that cover the full predicates
-    FindMissingIndex(plan.get(), action_map, candidate_actions);
+    FindMissingIndex(plan.get(), action_map, candidate_actions, &existing_action_commands);
   }
 }
 
 void IndexActionGenerator::FindMissingIndex(const planner::AbstractPlanNode *plan,
                                             std::map<action_id_t, std::unique_ptr<AbstractAction>> *action_map,
-                                            std::vector<action_id_t> *candidate_actions) {
+                                            std::vector<action_id_t> *candidate_actions,
+                                            std::set<std::string> *existing_action_commands) {
   // Visit all the child nodes
   auto children = plan->GetChildren();
-  for (auto child : children) FindMissingIndex(child.Get(), action_map, candidate_actions);
+  for (auto child : children) FindMissingIndex(child.Get(), action_map, candidate_actions, existing_action_commands);
 
   auto plan_type = plan->GetPlanNodeType();
   if (plan_type == planner::PlanNodeType::SEQSCAN || plan_type == planner::PlanNodeType::INDEXSCAN) {
@@ -85,31 +90,36 @@ void IndexActionGenerator::FindMissingIndex(const planner::AbstractPlanNode *pla
         }
       }
 
-      // TODO(Lin): Don't insert potentially duplicated actions
       // Generate the create index action
       std::string new_index_name = IndexActionUtil::GenerateIndexName(table_name, index_columns);
       auto create_index_action =
           std::make_unique<CreateIndexAction>(db_oid, new_index_name, table_name, table_oid, index_columns);
-      action_id_t create_index_action_id = create_index_action->GetActionID();
-      // Create index would invalidate itself
-      create_index_action->AddInvalidatedAction(create_index_action_id);
-      action_map->emplace(create_index_action_id, std::move(create_index_action));
-      // Only the create index action is valid
-      candidate_actions->emplace_back(create_index_action_id);
 
-      // Generate the drop index action
-      auto drop_index_action = std::make_unique<DropIndexAction>(db_oid, new_index_name, table_name, index_columns);
-      action_id_t drop_index_action_id = drop_index_action->GetActionID();
-      // Drop index would invalidate itself
-      drop_index_action->AddInvalidatedAction(drop_index_action_id);
-      action_map->emplace(drop_index_action_id, std::move(drop_index_action));
+      // Record the action if NOT duplicated
+      if (existing_action_commands->find(create_index_action->GetSQLCommand()) == existing_action_commands->end()) {
+        action_id_t create_index_action_id = create_index_action->GetActionID();
+        // Create index would invalidate itself
+        create_index_action->AddInvalidatedAction(create_index_action_id);
+        existing_action_commands->emplace(create_index_action->GetSQLCommand());
+        action_map->emplace(create_index_action_id, std::move(create_index_action));
+        // Only the create index action is valid
+        candidate_actions->emplace_back(create_index_action_id);
 
-      // Populate the reverse actions
-      action_map->at(create_index_action_id)->AddReverseAction(drop_index_action_id);
-      action_map->at(drop_index_action_id)->AddReverseAction(create_index_action_id);
-      // Populate the enabled actions
-      action_map->at(create_index_action_id)->AddEnabledAction(drop_index_action_id);
-      action_map->at(drop_index_action_id)->AddEnabledAction(create_index_action_id);
+        // Generate the drop index action
+        auto drop_index_action = std::make_unique<DropIndexAction>(db_oid, new_index_name, table_name, index_columns);
+        action_id_t drop_index_action_id = drop_index_action->GetActionID();
+        // Drop index would invalidate itself
+        drop_index_action->AddInvalidatedAction(drop_index_action_id);
+        existing_action_commands->emplace(drop_index_action->GetSQLCommand());
+        action_map->emplace(drop_index_action_id, std::move(drop_index_action));
+
+        // Populate the reverse actions
+        action_map->at(create_index_action_id)->AddReverseAction(drop_index_action_id);
+        action_map->at(drop_index_action_id)->AddReverseAction(create_index_action_id);
+        // Populate the enabled actions
+        action_map->at(create_index_action_id)->AddEnabledAction(drop_index_action_id);
+        action_map->at(drop_index_action_id)->AddEnabledAction(create_index_action_id);
+      }
     }
   }
 }

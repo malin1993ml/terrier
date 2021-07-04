@@ -7,6 +7,7 @@
 #include "planner/plannodes/abstract_plan_node.h"
 #include "self_driving/planning/action/generators/change_knob_action_generator.h"
 #include "self_driving/planning/action/generators/index_action_generator.h"
+#include "self_driving/planning/action/generators/no_op_action_generator.h"
 #include "self_driving/planning/pilot.h"
 #include "self_driving/planning/pilot_util.h"
 
@@ -27,6 +28,8 @@ MonteCarloTreeSearch::MonteCarloTreeSearch(common::ManagedPointer<PlanningContex
   IndexActionGenerator().GenerateActions(plans, planning_context_->GetSettingsManager(), &action_map_,
                                          &candidate_actions_);
   ChangeKnobActionGenerator().GenerateActions(plans, planning_context_->GetSettingsManager(), &action_map_,
+                                              &candidate_actions_);
+  NoOpActionGenerator().GenerateActions(plans, planning_context_->GetSettingsManager(), &action_map_,
                                               &candidate_actions_);
 
   for (const auto &it UNUSED_ATTRIBUTE : action_map_) {
@@ -80,8 +83,8 @@ void MonteCarloTreeSearch::BestAction(std::vector<std::vector<pilot::ActionTreeN
       auto action = child->GetCurrentAction();
       auto &action_info = action_map_.at(action);
       top.emplace_back(curr_node->GetTreeNodeId(), child->GetTreeNodeId(), action, child->GetCost(),
-                       action_info->GetDatabaseOid(), action_info->GetSQLCommand(), child->GetActionStartSegmentIndex(),
-                       child->GetActionPlanEndIndex());
+                       action_info->GetDatabaseOid(), action_info->GetSQLCommand(), curr_node->GetActionStartSegmentIndex(),
+                       curr_node->GetActionPlanEndIndex());
     }
 
     best_action_seq->emplace_back(std::move(top));
