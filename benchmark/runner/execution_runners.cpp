@@ -482,6 +482,16 @@ class ExecutionRunners : public benchmark::Fixture {
     return ret_val;
   }
 
+  size_t DeriveIndexBuildThreads(size_t num_threads, std::string tbl_name) {
+    auto txn = txn_manager_->BeginTransaction();
+    auto accessor = catalog_->GetAccessor(common::ManagedPointer(txn), db_oid, DISABLED);
+
+    auto sql_table = accessor->GetTable(accessor->GetTableOid(tbl_name));
+    size_t num_tasks =
+        std::ceil(sql_table->GetNumBlocks() * 1.0 / execution::sql::TableVectorIterator::K_MIN_BLOCK_RANGE_SIZE);
+    return std::min(num_tasks, num_threads);
+  }
+
   void HandleBuildDropIndex(bool is_build, int64_t tbl_cols, int64_t num_rows, int64_t num_key, type::TypeId type) {
     auto block_store = db_main->GetStorageLayer()->GetBlockStore();
     auto catalog = db_main->GetCatalogLayer()->GetCatalog();
@@ -1934,8 +1944,7 @@ void ExecutionRunners::ExecuteCreateIndex(benchmark::State *state) {
     return;
   }
 
-  // Only generate counters if executing in parallel
-  auto exec_settings = GetParallelExecutionSettings(num_threads, num_threads != 0);
+  auto exec_settings = GetParallelExecutionSettings(num_threads, false);
   auto int_size = type::TypeUtil::GetTypeTrueSize(type::TypeId::INTEGER);
   type::TypeId mix_type;
   if (varchar_mix == 1)
@@ -1955,9 +1964,12 @@ void ExecutionRunners::ExecuteCreateIndex(benchmark::State *state) {
 
   auto units = std::make_unique<selfdriving::PipelineOperatingUnits>();
   selfdriving::ExecutionOperatingUnitFeatureVector pipe0_vec;
+  if (num_threads != 0)
+    // Adjust the number of threads given the table block numbers
+    num_threads = DeriveIndexBuildThreads(num_threads, tbl_name);
   pipe0_vec.emplace_back(execution::translator_id_t(1), selfdriving::ExecutionOperatingUnitType::CREATE_INDEX, row,
-                         tuple_size, num_col, car, 1, 0, num_threads,
-                         storage::index::BPlusTreeBase::DEFAULT_INNER_NODE_SIZE_UPPER_THRESHOLD,
+                         tuple_size / std::max(1L, num_threads), num_col, car / std::max(1L, num_threads), 1, 0,
+                         num_threads, storage::index::BPlusTreeBase::DEFAULT_INNER_NODE_SIZE_UPPER_THRESHOLD,
                          storage::index::BPlusTreeBase::DEFAULT_INNER_NODE_SIZE_LOWER_THRESHOLD);
   if (num_threads != 0) {
     pipe0_vec.emplace_back(execution::translator_id_t(1), selfdriving::ExecutionOperatingUnitType::CREATE_INDEX_MAIN,
