@@ -1969,7 +1969,7 @@ void ExecutionRunners::ExecuteCreateIndex(benchmark::State *state) {
     // Adjust the number of threads given the table block numbers
     num_threads = DeriveIndexBuildThreads(num_threads, tbl_name);
   pipe0_vec.emplace_back(execution::translator_id_t(1), selfdriving::ExecutionOperatingUnitType::CREATE_INDEX, row,
-                         tuple_size / std::max(1L, num_threads), num_col, car / std::max(1L, num_threads), 1, 0,
+                         tuple_size, num_col / std::max(1L, num_threads), car / std::max(1L, num_threads), 1, 0,
                          num_threads, storage::index::BPlusTreeBase::DEFAULT_INNER_NODE_SIZE_UPPER_THRESHOLD,
                          storage::index::BPlusTreeBase::DEFAULT_INNER_NODE_SIZE_LOWER_THRESHOLD);
   if (num_threads != 0) {
