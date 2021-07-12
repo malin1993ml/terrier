@@ -36,6 +36,7 @@ class TreeNode {
    * Constructor for tree node
    * @param parent pointer to parent
    * @param current_action action that leads its parent to the current node, root has NULL action
+   * @param is_no_op whether this is a no-op action
    * @param current_segment_cost cost of executing current segment with actions applied on path from root to current
    * node
    * @param action_start_segment_index start of segment index that this node will influence
@@ -43,8 +44,9 @@ class TreeNode {
    * @param memory memory consumption at the current node in bytes
    * @param action_state the state of the action after the intervals represented by this node.
    */
-  TreeNode(common::ManagedPointer<TreeNode> parent, action_id_t current_action, uint64_t action_start_segment_index,
-           double current_segment_cost, double later_segments_cost, uint64_t memory, ActionState action_state);
+  TreeNode(common::ManagedPointer<TreeNode> parent, action_id_t current_action, bool is_no_op,
+           uint64_t action_start_segment_index, double current_segment_cost, double later_segments_cost,
+           uint64_t memory, ActionState action_state);
 
   /**
    * @return action id at node with least cost
@@ -193,6 +195,7 @@ class TreeNode {
   const uint64_t action_start_segment_index_;  // start of segment index that this node will influence
   uint64_t action_plan_end_index_;             // end of segment index for planning
   const action_id_t current_action_;
+  const bool is_no_op_;         // whether this is a no-op action
   const double ancestor_cost_;  // cost of executing segments with actions applied on path from root to current node
   const common::ManagedPointer<TreeNode> parent_;
 

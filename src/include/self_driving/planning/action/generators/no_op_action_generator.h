@@ -27,7 +27,6 @@ class NoOpActionGenerator : AbstractActionGenerator {
                        common::ManagedPointer<settings::SettingsManager> settings_manager,
                        std::map<action_id_t, std::unique_ptr<AbstractAction>> *action_map,
                        std::vector<action_id_t> *candidate_actions) override;
-
 };
 
 }  // namespace selfdriving::pilot

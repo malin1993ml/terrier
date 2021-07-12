@@ -30,7 +30,7 @@ MonteCarloTreeSearch::MonteCarloTreeSearch(common::ManagedPointer<PlanningContex
   ChangeKnobActionGenerator().GenerateActions(plans, planning_context_->GetSettingsManager(), &action_map_,
                                               &candidate_actions_);
   NoOpActionGenerator().GenerateActions(plans, planning_context_->GetSettingsManager(), &action_map_,
-                                              &candidate_actions_);
+                                        &candidate_actions_);
 
   for (const auto &it UNUSED_ATTRIBUTE : action_map_) {
     SELFDRIVING_LOG_INFO("Generated action: ID {} Command {}", it.first, it.second->GetSQLCommand());
@@ -51,7 +51,7 @@ MonteCarloTreeSearch::MonteCarloTreeSearch(common::ManagedPointer<PlanningContex
   ActionState action_state;
   action_state.SetIntervals(0, end_segment_index);
   // root correspond to no action applied to any segment
-  root_ = std::make_unique<TreeNode>(nullptr, static_cast<action_id_t>(NULL_ACTION), 0, 0, later_cost,
+  root_ = std::make_unique<TreeNode>(nullptr, static_cast<action_id_t>(NULL_ACTION), false, 0, 0, later_cost,
                                      planning_context_->GetMemoryInfo().initial_memory_bytes_, action_state);
   action_state_cost_map_.emplace(std::make_pair(std::move(action_state), later_cost));
 }
@@ -83,8 +83,8 @@ void MonteCarloTreeSearch::BestAction(std::vector<std::vector<pilot::ActionTreeN
       auto action = child->GetCurrentAction();
       auto &action_info = action_map_.at(action);
       top.emplace_back(curr_node->GetTreeNodeId(), child->GetTreeNodeId(), action, child->GetCost(),
-                       action_info->GetDatabaseOid(), action_info->GetSQLCommand(), curr_node->GetActionStartSegmentIndex(),
-                       curr_node->GetActionPlanEndIndex());
+                       action_info->GetDatabaseOid(), action_info->GetSQLCommand(),
+                       curr_node->GetActionStartSegmentIndex(), curr_node->GetActionPlanEndIndex());
     }
 
     best_action_seq->emplace_back(std::move(top));

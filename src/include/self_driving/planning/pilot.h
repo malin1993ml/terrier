@@ -155,7 +155,7 @@ class Pilot {
 
   Forecaster forecaster_;
   uint64_t action_planning_horizon_{120};
-  uint64_t simulation_number_{100};
+  uint64_t simulation_number_{80};
 
   std::mutex forecaster_train_mutex_;
 };

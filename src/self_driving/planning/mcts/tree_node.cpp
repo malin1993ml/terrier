@@ -20,7 +20,7 @@ STRONG_TYPEDEF_BODY(tree_node_id_t, uint64_t);
 
 tree_node_id_t TreeNode::tree_node_identifier = tree_node_id_t(1);
 
-TreeNode::TreeNode(common::ManagedPointer<TreeNode> parent, action_id_t current_action,
+TreeNode::TreeNode(common::ManagedPointer<TreeNode> parent, action_id_t current_action, bool is_no_op,
                    uint64_t action_start_segment_index, double current_segment_cost, double later_segments_cost,
                    uint64_t memory, ActionState action_state)
     : tree_node_id_(TreeNode::tree_node_identifier++),
@@ -29,6 +29,7 @@ TreeNode::TreeNode(common::ManagedPointer<TreeNode> parent, action_id_t current_
       action_start_segment_index_(action_start_segment_index),
       action_plan_end_index_(action_start_segment_index_),
       current_action_(current_action),
+      is_no_op_(is_no_op),
       ancestor_cost_(current_segment_cost + (parent == nullptr ? 0 : parent->ancestor_cost_)),
       parent_(parent),
       number_of_visits_{1},
@@ -36,14 +37,16 @@ TreeNode::TreeNode(common::ManagedPointer<TreeNode> parent, action_id_t current_
       action_state_(std::move(action_state)) {
   if (parent != nullptr) parent->is_leaf_ = false;
   cost_ = ancestor_cost_ + later_segments_cost;
+  tree_node_id_t parent_tree_node_id;
+  if (parent != nullptr)
+    parent_tree_node_id = parent_->tree_node_id_;
+  else
+    parent_tree_node_id = INVALID_TREE_NODE_ID;
   SELFDRIVING_LOG_INFO(
-      "Creating Tree Node: Depth {} Action Start Segment Index {} Action {} Cost {} Current_Segment_Cost {} "
-      "Later_Segment_Cost {} Ancestor_Cost {}",
-      depth_, action_start_segment_index_, current_action_, cost_, current_segment_cost, later_segments_cost,
-      ancestor_cost_);
-
-  // TODO(lin): Add the memory information to the action recording table
-  (void)memory_;
+      "Creating Tree Node {}: Depth {} Parent {} Action Start Segment Index {} Action {} Cost {} Current_Segment_Cost "
+      "{} Later_Segment_Cost {} Ancestor_Cost {} Memory {}",
+      tree_node_id_.UnderlyingValue(), depth_, parent_tree_node_id.UnderlyingValue(), action_start_segment_index_,
+      current_action_, cost_, current_segment_cost, later_segments_cost, ancestor_cost_, memory_);
 }
 
 common::ManagedPointer<TreeNode> TreeNode::BestSubtree() {
@@ -72,7 +75,8 @@ std::vector<common::ManagedPointer<TreeNode>> TreeNode::BestSubtreeOrdering() {
 
   struct {
     bool operator()(common::ManagedPointer<TreeNode> a, common::ManagedPointer<TreeNode> b) {
-      return a->cost_ < b->cost_;
+      // Slightly decrease the cost of no-op action to avoid oscillation between ineffective actions
+      return a->cost_ * (1 - 0.01 * a->is_no_op_) < b->cost_ * (1 - 0.01 * b->is_no_op_);
     }
   } cmp;
   std::sort(results.begin(), results.end(), cmp);
@@ -266,13 +270,10 @@ void TreeNode::ChildrenRollout(PlanningContext *planning_context,
     // Add new child with proper action state
     new_action_state.SetIntervals(action_plan_end_index_ + 1, tree_end_segment_index);
 
-    // Slightly increase the cost if this is not the no-op action. This avoids oscillation between ineffective actions
-    if (action_ptr->GetActionType() != ActionType::NO_OP) {
-      child_segment_cost *= 1.01;
-      later_segments_cost *= 1.01;
-    }
-    children_.push_back(std::make_unique<TreeNode>(common::ManagedPointer(this), action_id, action_plan_end_index_ + 1,
-                                                   child_segment_cost, later_segments_cost,
+    bool is_no_op = action_ptr->GetActionType() == ActionType::NO_OP;
+
+    children_.push_back(std::make_unique<TreeNode>(common::ManagedPointer(this), action_id, is_no_op,
+                                                   action_plan_end_index_ + 1, child_segment_cost, later_segments_cost,
                                                    action_plan_end_memory_consumption, new_action_state));
 
     // Reverse the action state
@@ -317,7 +318,7 @@ void TreeNode::BackPropogate(const PlanningContext &planning_context,
                              bool use_min_cost) {
   auto curr = common::ManagedPointer(this);
   auto leaf_cost = cost_;
-  double expanded_cost = use_min_cost ? ComputeMinCostFromChildren() : ComputeWeightedAverageCostFromChildren();
+  double expanded_cost = ComputeWeightedAverageCostFromChildren();
 
   auto num_expansion = children_.size();
   while (curr != nullptr && curr->parent_ != nullptr) {
@@ -325,7 +326,7 @@ void TreeNode::BackPropogate(const PlanningContext &planning_context,
     PilotUtil::ApplyAction(planning_context, action_map.at(rev_action)->GetSQLCommand(),
                            action_map.at(rev_action)->GetDatabaseOid(), Pilot::WHAT_IF);
     if (use_min_cost) {
-      curr->cost_ = std::min(curr->cost_, expanded_cost);
+      curr->cost_ = curr->ComputeMinCostFromChildren();
     } else {
       // All ancestors of the expanded leaf need to updated with a weight increase of num_expansion, and a new weight
       curr->UpdateCostAndVisits(num_expansion, leaf_cost, expanded_cost);

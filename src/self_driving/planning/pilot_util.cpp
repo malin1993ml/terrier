@@ -53,6 +53,7 @@ void PilotUtil::ApplyAction(const pilot::PlanningContext &planning_context, cons
   else
     query_exec_util->BeginTransaction(db_oid);
 
+  bool is_no_op;
   bool is_query_ddl;
   {
     std::string query = sql_query;
@@ -60,16 +61,19 @@ void PilotUtil::ApplyAction(const pilot::PlanningContext &planning_context, cons
     auto statement = std::make_unique<network::Statement>(std::move(query), std::move(parse_tree));
     is_query_ddl = network::NetworkUtil::DDLQueryType(statement->GetQueryType()) ||
                    statement->GetQueryType() == network::QueryType::QUERY_SET;
+    is_no_op = statement->GetQueryType() == network::QueryType::QUERY_INVALID;
   }
 
-  if (is_query_ddl) {
-    query_exec_util->ExecuteDDL(sql_query, what_if);
-  } else {
-    // Parameters are also specified in the query string, hence we have no parameters nor parameter types here
-    execution::exec::ExecutionSettings settings{};
-    if (query_exec_util->CompileQuery(sql_query, nullptr, nullptr, std::make_unique<optimizer::TrivialCostModel>(),
-                                      std::nullopt, settings)) {
-      query_exec_util->ExecuteQuery(sql_query, nullptr, nullptr, nullptr, settings);
+  if (!is_no_op) {
+    if (is_query_ddl) {
+      query_exec_util->ExecuteDDL(sql_query, what_if);
+    } else {
+      // Parameters are also specified in the query string, hence we have no parameters nor parameter types here
+      execution::exec::ExecutionSettings settings{};
+      if (query_exec_util->CompileQuery(sql_query, nullptr, nullptr, std::make_unique<optimizer::TrivialCostModel>(),
+                                        std::nullopt, settings)) {
+        query_exec_util->ExecuteQuery(sql_query, nullptr, nullptr, nullptr, settings);
+      }
     }
   }
 
@@ -610,6 +614,8 @@ void PilotUtil::ComputeTableSizeRatios(const PlanningContext &planning_context, 
     if (statement->GetType() == parser::StatementType::INSERT) {
       auto insert_statement = reinterpret_cast<parser::InsertStatement *>(statement.Get());
       table_oid = accessor->GetTableOid(insert_statement->GetInsertionTable()->GetTableName());
+      printf("Insert into %s with id %d\n", insert_statement->GetInsertionTable()->GetTableName().c_str(),
+             table_oid.UnderlyingValue());
       // Number of values is the number of rows inserted
       num_row_delta = insert_statement->GetValues()->size();
     }
@@ -617,6 +623,8 @@ void PilotUtil::ComputeTableSizeRatios(const PlanningContext &planning_context, 
     if (statement->GetType() == parser::StatementType::DELETE) {
       auto delete_statement = reinterpret_cast<parser::DeleteStatement *>(statement.Get());
       table_oid = accessor->GetTableOid(delete_statement->GetDeletionTable()->GetTableName());
+      printf("Delete from %s with id %d\n", delete_statement->GetDeletionTable()->GetTableName().c_str(),
+             table_oid.UnderlyingValue());
       if (delete_statement->GetDeleteCondition() != nullptr) {
         // TODO(lin): right now assuming only deleting one row when there's a condition. Need cardinality estimation
         //  to get a more accurate estimation
@@ -634,10 +642,10 @@ void PilotUtil::ComputeTableSizeRatios(const PlanningContext &planning_context, 
   }
 
   // Compute table size ratios given the workload forecast
+  std::unordered_map<db_table_oid_pair, double, DBTableOidPairHasher> table_size_deltas;
   for (uint64_t idx = 0; idx < forecast->GetNumberOfSegments(); ++idx) {
     // Get the table num row changes in this segment
     auto &id_to_num_exec = forecast->GetSegmentByIndex(idx).GetIdToNumexec();
-    std::unordered_map<db_table_oid_pair, double, DBTableOidPairHasher> table_size_deltas;
     for (const auto &[query_id, table_id_to_delta] : query_row_changes) {
       if (id_to_num_exec.find(query_id) != id_to_num_exec.end()) {
         auto table_id = table_id_to_delta.first;
@@ -652,13 +660,17 @@ void PilotUtil::ComputeTableSizeRatios(const PlanningContext &planning_context, 
       double new_table_size = size_delta + static_cast<int64_t>(table_sizes[table_id]);
       if (new_table_size < 0)
         memory_info->segment_table_size_ratios_[idx][table_id] = 0;
-      else
+      else {
         memory_info->segment_table_size_ratios_[idx][table_id] = new_table_size / table_sizes[table_id];
+        printf("Segment %lu id %d ratio %f\n", idx, table_id.second.UnderlyingValue(),
+               new_table_size / table_sizes[table_id]);
+      }
     }
   }
 }
 
 void PilotUtil::ComputeTableIndexSizes(const PlanningContext &planning_context, MemoryInfo *memory_info) {
+  memory_info->initial_memory_bytes_ = 0;
   // Traverse all databases to find the info (since we don't know which table belongs to which database)
   for (auto db_oid : planning_context.GetDBOids()) {
     auto accessor = planning_context.GetCatalogAccessor(db_oid);
@@ -669,6 +681,7 @@ void PilotUtil::ComputeTableIndexSizes(const PlanningContext &planning_context, 
       if (sql_table == nullptr) continue;
       size_t table_memory = sql_table->EstimateHeapUsage();
       memory_info->table_memory_bytes_[table_oid] = table_memory;
+      printf("table id %d memory %ld\n", table_oid.second.UnderlyingValue(), table_memory);
       memory_info->initial_memory_bytes_ += table_memory;
 
       // Get index memory size
@@ -678,10 +691,13 @@ void PilotUtil::ComputeTableIndexSizes(const PlanningContext &planning_context, 
         std::string index_name(accessor->GetIndexName(index_oid));
         size_t index_memory = index->EstimateHeapUsage();
         memory_info->table_index_memory_bytes_[table_oid][index_name] = index_memory;
+        printf("table id %d index %s memory %ld\n", table_oid.second.UnderlyingValue(), index_name.c_str(),
+               index_memory);
         memory_info->initial_memory_bytes_ += index_memory;
       }
     }
   }
+  printf("Initial memory %lu\n", memory_info->initial_memory_bytes_);
 }
 
 void PilotUtil::EstimateCreateIndexAction(PlanningContext *planning_context, CreateIndexAction *create_action,
@@ -751,9 +767,17 @@ void PilotUtil::EstimateCreateIndexAction(PlanningContext *planning_context, Cre
   }
 
   // Multiply all the predictions except for the memory and elapsed time by the number of concurrent threads
-  for (uint64_t idx = 0; idx < pred_dim - 2; ++idx)
-    pipeline_sum[idx] *= 8;
+  for (uint64_t idx = 0; idx < pred_dim - 2; ++idx) pipeline_sum[idx] *= 8;
+  // FIXME(lin): Adjust for cardinality difference......
+  if (pipeline_sum[pred_dim - 1] < 15000000)
+    pipeline_sum[pred_dim - 1] /= 2;
+  else
+    pipeline_sum[pred_dim - 1] *= 2;
 
+  // FIXME(lin): Hard-code memory consumption estimation for now...
+  pipeline_sum[pred_dim - 2] = 600113400;
+
+  printf("Estimated index memory %f time %f\n", pipeline_sum[pred_dim - 2], pipeline_sum[pred_dim - 1]);
   create_action->SetEstimatedMetrics(std::move(pipeline_sum));
 }
 
@@ -771,7 +795,7 @@ size_t PilotUtil::CalculateMemoryConsumption(const MemoryInfo &memory_info, cons
   // Then count the index sizes for each table, if they're not dropped
   for (auto &[table_id, index_sizes] : memory_info.table_index_memory_bytes_) {
     for (auto &[index_name, size] : index_sizes) {
-      if (dropped_indexes.find(index_name) != dropped_indexes.end()) table_memory_sizes[table_id] += size;
+      if (dropped_indexes.find(index_name) == dropped_indexes.end()) table_memory_sizes[table_id] += size;
     }
   }
 

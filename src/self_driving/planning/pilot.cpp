@@ -91,22 +91,26 @@ void Pilot::ActionSearch(std::vector<ActionTreeNode> *best_action_seq) {
   auto end_segment_index = std::min(action_planning_horizon_ - 1, num_segs - 1);
   auto mcst = MonteCarloTreeSearch(common::ManagedPointer<PlanningContext>(&planning_context_),
                                    common::ManagedPointer(forecast_), end_segment_index);
-  mcst.RunSimulation(simulation_number_,
-                     planning_context_.GetSettingsManager()->GetInt64(settings::Param::pilot_memory_constraint));
+  // mcst.RunSimulation(simulation_number_,
+  //                   planning_context_.GetSettingsManager()->GetInt64(settings::Param::pilot_memory_constraint));
+  printf("New memory constraint: %lu\n", planning_context_.GetMemoryInfo().initial_memory_bytes_ + 645000000);
+  mcst.RunSimulation(simulation_number_, planning_context_.GetMemoryInfo().initial_memory_bytes_ + 645000000);
 
   // Record the top 3 at each level along the "best action path".
   // TODO(wz2): May want to improve this at a later time.
   std::vector<std::vector<ActionTreeNode>> layered_action;
   mcst.BestAction(&layered_action, 3);
   auto action_file = fopen("mcts_plan.csv", "w");
-  for (size_t i = 0; i < layered_action.size(); i++) {
-    ActionTreeNode &action = layered_action[i].front();
+  for (auto &actions : layered_action) {
+    ActionTreeNode &action = actions.front();
     best_action_seq->emplace_back(action);
 
-    SELFDRIVING_LOG_INFO(fmt::format("Action Selected: Time Interval: {}; Action Command: {} Applied to Database {}",
-                                     best_action_seq->back().GetActionStartSegmentIndex(),
-                                     best_action_seq->back().GetActionText(),
-                                     static_cast<uint32_t>(best_action_seq->back().GetDbOid())));
+    SELFDRIVING_LOG_INFO(
+        fmt::format("Action {} Selected: Time Interval: {}; Action Command: {} Applied to Database "
+                    "{} Cost: {}",
+                    best_action_seq->back().GetTreeNodeId().UnderlyingValue(),
+                    best_action_seq->back().GetActionStartSegmentIndex(), best_action_seq->back().GetActionText(),
+                    static_cast<uint32_t>(best_action_seq->back().GetDbOid()), best_action_seq->back().GetCost()));
     fprintf(action_file, "%lu, \"%s\"\n", best_action_seq->back().GetActionStartSegmentIndex(),
             best_action_seq->back().GetActionText().c_str());
   }
