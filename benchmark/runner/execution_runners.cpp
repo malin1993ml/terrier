@@ -482,13 +482,14 @@ class ExecutionRunners : public benchmark::Fixture {
     return ret_val;
   }
 
-  size_t DeriveIndexBuildThreads(size_t num_threads, std::string tbl_name) {
+  size_t DeriveIndexBuildThreads(size_t num_threads, const std::string &tbl_name) {
     auto txn = txn_manager_->BeginTransaction();
     auto accessor = catalog_->GetAccessor(common::ManagedPointer(txn), db_oid, DISABLED);
 
     auto sql_table = accessor->GetTable(accessor->GetTableOid(tbl_name));
     size_t num_tasks =
         std::ceil(sql_table->GetNumBlocks() * 1.0 / execution::sql::TableVectorIterator::K_MIN_BLOCK_RANGE_SIZE);
+    txn_manager_->Commit(txn, transaction::TransactionUtil::EmptyCallback, nullptr);
     return std::min(num_tasks, num_threads);
   }
 
