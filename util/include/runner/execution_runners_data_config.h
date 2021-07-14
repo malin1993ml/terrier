@@ -39,7 +39,7 @@ class ExecutionRunnersDataConfig {
    * type table_type_dists_[i=0][k]).
    */
   std::vector<std::vector<std::vector<uint32_t>>> table_col_dists_ = {
-      {{15}}, {{15}}, {{5}}, {{0, 15, 0}, {3, 12, 0}, {7, 8, 0}, {11, 4, 0}}, {{1, 4}, {2, 3}, {3, 2}, {4, 1}}};
+      {{15}}, {{15}}, {{5}}, {{0, 15, 0}, {3, 12, 0}, {7, 8, 0}, {11, 4, 0}}, {{1, 4}, {2, 3}, {3, 2}, {2, 1}}};
 
   /**
    * Distribution of row numbers of tables to create.
@@ -71,7 +71,7 @@ class ExecutionRunnersDataConfig {
   /**
    * Parameter controls distribution of mixed (integer, varchar) for scans
    */
-  std::vector<std::pair<uint32_t, uint32_t>> sweep_scan_mixed_varchar_dist_ = {{2, 3}, {3, 2}, {4, 1}};
+  std::vector<std::pair<uint32_t, uint32_t>> sweep_scan_mixed_varchar_dist_ = {{2, 3}, {3, 2}, {2, 1}};
 
   /**
    * Parameter controls number of keys to be used in mini-runner index lookups (for integer, real, and bigint).

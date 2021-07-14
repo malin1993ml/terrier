@@ -203,10 +203,10 @@ OPUNIT_X_TRANSFORMER_MAP = {
     OpUnit.OP_VARCHAR_COMPARE: None,
     OpUnit.OUTPUT: None,
     OpUnit.IDX_SCAN: None,
-    OpUnit.CREATE_INDEX: None,
-    OpUnit.CREATE_INDEX_MAIN: None,
 
     # Transform the opunits for which the ratio between the num_rows and the cardinality impacts the behavior
+    OpUnit.CREATE_INDEX: _num_rows_cardinality_linear_train_transform,
+    OpUnit.CREATE_INDEX_MAIN: _num_rows_cardinality_linear_train_transform,
     OpUnit.HASHJOIN_BUILD: _num_rows_cardinality_linear_train_transform,
     OpUnit.HASHJOIN_PROBE: _num_rows_cardinality_linear_train_transform,
     OpUnit.AGG_BUILD: _num_rows_cardinality_linear_train_transform,

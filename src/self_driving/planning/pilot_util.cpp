@@ -726,9 +726,10 @@ void PilotUtil::EstimateCreateIndexAction(PlanningContext *planning_context, Cre
   for (auto &iter : ous->GetPipelineFeatureMap()) {
     // TODO(lin): Interpret mode by default. May want to add that as an option (knob) for the action
     for (auto &feature : iter.second) {
-      printf("%s %lu %lu %lu %lu\n",
+      printf("%s %lu %lu %lu %lu %lu\n",
              OperatingUnitUtil::ExecutionOperatingUnitTypeToString(feature.GetExecutionOperatingUnitType()).c_str(),
-             feature.GetNumRows(), feature.GetKeySize(), feature.GetNumKeys(), feature.GetNumConcurrent());
+             feature.GetNumRows(), feature.GetKeySize(), feature.GetNumKeys(), feature.GetCardinality(),
+             feature.GetNumConcurrent());
     }
     aggregated_data->RecordPipelineData(qid, iter.first, 0, std::vector<ExecutionOperatingUnitFeature>(iter.second),
                                         resource_metrics);
@@ -768,6 +769,7 @@ void PilotUtil::EstimateCreateIndexAction(PlanningContext *planning_context, Cre
 
   // Multiply all the predictions except for the memory and elapsed time by the number of concurrent threads
   for (uint64_t idx = 0; idx < pred_dim - 2; ++idx) pipeline_sum[idx] *= 8;
+  /*
   // FIXME(lin): Adjust for cardinality difference......
   if (pipeline_sum[pred_dim - 1] < 15000000)
     pipeline_sum[pred_dim - 1] /= 2;
@@ -776,6 +778,7 @@ void PilotUtil::EstimateCreateIndexAction(PlanningContext *planning_context, Cre
 
   // FIXME(lin): Hard-code memory consumption estimation for now...
   pipeline_sum[pred_dim - 2] = 600113400;
+   */
 
   printf("Estimated index memory %f time %f\n", pipeline_sum[pred_dim - 2], pipeline_sum[pred_dim - 1]);
   create_action->SetEstimatedMetrics(std::move(pipeline_sum));
